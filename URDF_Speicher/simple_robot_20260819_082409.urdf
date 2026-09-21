@@ -1,0 +1,168 @@
+<robot name="simple_robot">
+  <material name="grey">
+    <color rgba="0.5 0.5 0.5 1.0" />
+  </material>
+  <material name="orange">
+    <color rgba="1.0 0.5 0.0 1.0" />
+  </material>
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+      <geometry>
+        <box size="0.40 0.30 0.10" />
+      </geometry>
+      <material name="grey" />
+    </visual>
+    <inertial>
+      <mass value="5.0" />
+      <inertia ixx="0.05" ixy="0.0" ixz="0.0" iyy="0.05" iyz="0.0" izz="0.05" />
+    </inertial>
+  </link>
+  <link name="sensor_mount">
+    <visual>
+      <origin xyz="0 0 0.10" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.02" length="0.20" />
+      </geometry>
+      <material name="grey" />
+    </visual>
+    <inertial>
+      <mass value="0.3" />
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001" />
+    </inertial>
+  </link>
+  <joint name="base_to_mount" type="revolute">
+    <parent link="base_link" />
+    <child link="sensor_mount" />
+    <origin xyz="0.1 0 0.1" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="100" velocity="1.0" lower="-3.14159" upper="3.14159" />
+  </joint>
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.05" length="0.06" />
+      </geometry>
+      <material name="orange" />
+    </visual>
+    <inertial>
+      <mass value="0.2" />
+      <inertia ixx="0.0005" ixy="0.0" ixz="0.0" iyy="0.0005" iyz="0.0" izz="0.0005" />
+    </inertial>
+  </link>
+  <joint name="mount_to_lidar" type="fixed">
+    <parent link="sensor_mount" />
+    <child link="lidar_link" />
+    <origin xyz="0 0 0.23" rpy="0 0 0" />
+  </joint>
+  <link name="camera_link" />
+  <joint name="base_to_camera" type="fixed">
+    <parent link="base_link" />
+    <child link="camera_link" />
+    <origin xyz="0.20 0 0.08" rpy="0 0 0" />
+  </joint>
+  <link name="link5" />
+  <joint name="joint4" type="fixed">
+    <parent link="base_link" />
+    <child link="link5" />
+    <origin xyz="0 0 0.05" rpy="0 0 0" />
+  </joint>
+  <link name="Rad">
+    <visual>
+      <geometry>
+        <cylinder radius="0.03" length="0.15" />
+      </geometry>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <material name="Rad_material">
+        <color rgba="0.6 0.6 0.6196 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.03" length="0.2" />
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+    </collision>
+  </link>
+  <joint name="joint5" type="continuous">
+    <parent link="link5" />
+    <child link="Rad" />
+    <origin xyz="0 0.15 0" rpy="-1.570796327 -1.570796327 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="100" velocity="1.0" />
+  </joint>
+  <link name="Rad2">
+    <visual>
+      <geometry>
+        <cylinder radius="0.03" length="0.15" />
+      </geometry>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <material name="Rad2_material">
+        <color rgba="0.6 0.6 0.6196 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.03" length="0.15" />
+      </geometry>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+    </collision>
+  </link>
+  <joint name="joint6" type="continuous">
+    <parent link="link5" />
+    <child link="Rad2" />
+    <origin xyz="0 -0.15 0" rpy="1.570796327 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="100" velocity="1.0" />
+    <mimic joint="joint5" multiplier="1" offset="0" />
+  </joint>
+  <link name="Rad3">
+    <visual>
+      <geometry>
+        <cylinder radius="0.06" length="0.1" />
+      </geometry>
+      <origin xyz="0 0 -0.05" rpy="0 0 0" />
+      <material name="Rad3_material">
+        <color rgba="0.6 0.6 0.6196 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.4" length="0.1" />
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+    </collision>
+  </link>
+  <joint name="joint7" type="continuous">
+    <parent link="Rad2" />
+    <child link="Rad3" />
+    <origin xyz="0 0 0.1" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="100" velocity="1.0" />
+  </joint>
+  <link name="Rad4">
+    <visual>
+      <geometry>
+        <cylinder radius="0.06" length="0.1" />
+      </geometry>
+      <origin xyz="0 0 -0.05" rpy="0 0 0" />
+      <material name="Rad4_material">
+        <color rgba="0.6 0.6 0.6196 1" />
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.06" length="0.1" />
+      </geometry>
+      <origin xyz="0 0 0.05" rpy="0 0 0" />
+    </collision>
+  </link>
+  <joint name="joint8" type="continuous">
+    <parent link="Rad" />
+    <child link="Rad4" />
+    <origin xyz="0 0 0.1" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit effort="100" velocity="1.0" />
+    <mimic joint="joint5" multiplier="1" offset="0" />
+  </joint>
+</robot>

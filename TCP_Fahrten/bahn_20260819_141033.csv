@@ -1,0 +1,17 @@
+#roboter;my_robot
+#erzeugt;2026-08-19 14:10:42
+#rate_hz;25
+#tcp;link_11
+#kette;link_1;base_link;joint1
+#kette;link_2;link_1;joint2
+#kette;link_3;link_2;joint3
+#kette;link_4;link10;joint4
+#kette;link_5;link_4;joint5
+#kette;link_6;link_5;joint6
+#kette;link_7;link_6;joint7
+#kette;link_11;link_7;joint8
+#kette;link10;link_3;joint9
+#kopplung;joint6;joint5;-1;0
+t_s;x_m;y_m;z_m;roll_deg;pitch_deg;yaw_deg;joint1_deg;joint2_deg;joint3_deg;joint4_deg;joint5_deg;joint6_deg;joint7_deg;base_link_x_m;base_link_y_m;base_link_z_m;base_link_roll_deg;base_link_pitch_deg;base_link_yaw_deg;link_1_x_m;link_1_y_m;link_1_z_m;link_1_roll_deg;link_1_pitch_deg;link_1_yaw_deg;link_2_x_m;link_2_y_m;link_2_z_m;link_2_roll_deg;link_2_pitch_deg;link_2_yaw_deg;link_3_x_m;link_3_y_m;link_3_z_m;link_3_roll_deg;link_3_pitch_deg;link_3_yaw_deg;link_4_x_m;link_4_y_m;link_4_z_m;link_4_roll_deg;link_4_pitch_deg;link_4_yaw_deg;link_5_x_m;link_5_y_m;link_5_z_m;link_5_roll_deg;link_5_pitch_deg;link_5_yaw_deg;link_6_x_m;link_6_y_m;link_6_z_m;link_6_roll_deg;link_6_pitch_deg;link_6_yaw_deg;link_7_x_m;link_7_y_m;link_7_z_m;link_7_roll_deg;link_7_pitch_deg;link_7_yaw_deg;link10_x_m;link10_y_m;link10_z_m;link10_roll_deg;link10_pitch_deg;link10_yaw_deg;link_11_x_m;link_11_y_m;link_11_z_m;link_11_roll_deg;link_11_pitch_deg;link_11_yaw_deg
+0.0000;2.655718;0.000000;2.249989;0.0000;90.0000;-0.0000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.0000;-0.0000;0.0000;0.000000;0.000000;0.050000;0.0000;-0.0000;0.0000;0.100000;0.000000;0.650000;0.0000;-0.0000;0.0000;0.200000;0.000000;2.050000;0.0000;-0.0000;0.0000;0.900000;0.000000;2.250000;0.0000;90.0000;-0.0000;1.700000;0.000000;2.250000;0.0000;55.0500;0.0000;2.027861;0.000000;2.479145;180.0000;55.0490;180.0000;2.355718;0.000000;2.249994;0.0000;90.0000;-0.0000;0.200000;0.000000;2.250000;0.0000;90.0000;-0.0000;2.655718;0.000000;2.249989;0.0000;90.0000;-0.0000
+5.6048;0.000000;2.655718;2.249989;0.0000;90.0000;90.0000;90.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.000000;0.0000;-0.0000;0.0000;0.000000;0.000000;0.050000;0.0000;-0.0000;90.0000;0.000000;0.100000;0.650000;0.0000;-0.0000;90.0000;0.000000;0.200000;2.050000;0.0000;-0.0000;90.0000;0.000000;0.900000;2.250000;0.0000;90.0000;90.0000;0.000000;1.700000;2.250000;0.0000;55.0500;90.0000;0.000000;2.027861;2.479145;180.0000;55.0490;-90.0000;0.000000;2.355718;2.249994;0.0000;90.0000;90.0000;0.000000;0.200000;2.250000;0.0000;90.0000;90.0000;0.000000;2.655718;2.249989;0.0000;90.0000;90.0000

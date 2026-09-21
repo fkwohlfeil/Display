@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://claude.ai/chat/0b1c2d52-6cdd-46cc-8833-4ef83ec64189
+HostUrl=https://claude.ai/api/organizations/e72d1fcd-e7a6-407a-91b6-861699312a82/conversations/0b1c2d52-6cdd-46cc-8833-4ef83ec64189/wiggle/download-file?path=%2Fmnt%2Fuser-data%2Foutputs%2Furdf_gui2_1.py

@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://claude.ai/chat/53d6573d-9787-48a5-99a5-018762642060
+HostUrl=https://claude.ai/api/organizations/e72d1fcd-e7a6-407a-91b6-861699312a82/conversations/53d6573d-9787-48a5-99a5-018762642060/wiggle/download-file?path=%2Fmnt%2Fuser-data%2Foutputs%2Ftest_bahn_viewer3_fenster.py

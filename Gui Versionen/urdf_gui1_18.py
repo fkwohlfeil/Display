@@ -1,0 +1,3566 @@
+#!/usr/bin/env python3
+"""URDF anzeigen, Achsen vorgeben, Vorwaertskinematik rechnen, TF senden.
+
+Oberflaeche nach Skizze 1.4:
+
+    Kopf    STOP-Taste, Robotername, Meldungsfenster
+    Mitte   links die Gelenke (rad und grad), in der Mitte die Frames
+            (X Y Z RPY), rechts die Sollwertvorgabe kartesisch oder
+            achsspezifisch samt Jerk, Beschleunigung und Geschwindigkeit
+    Fuss    Sitzungsdauer und Alter der letzten TF-Ausgabe
+
+Alle Frames gehen zyklisch auf /tf, auch die fester Gelenke. Das ist Absicht:
+ueber /tf_static abgelegte Frames verfallen nie und blieben nach einem
+Modellwechsel als Geisterframes in RViz stehen.
+Zusaetzlich wird robot_description latched gesendet, damit RViz das Modell findet.
+Die Frames stehen als Baum entlang der kinematischen Kette und lassen sich
+zweigweise einklappen; die ganze Karte laesst sich wegklappen, dann bekommen
+Gelenkliste und Sollwerte den Platz.
+Das Bearbeiten von Laengen, Winkeln, Gelenktyp, Achse und Anschlaegen liegt in
+einem eigenen Fenster; uebernommene Aenderungen wirken sofort, geschrieben wird
+erst per Speichern. parent und child bleiben gesperrt, sie legen die Topologie
+fest. Neue Glieder entstehen immer als Link samt zufuehrendem Gelenk,
+geloescht wird ein Gelenk stets mit allem, was daran haengt. Jede Aenderung
+laeuft ueber dieselbe Pruefung und laesst sich rueckgaengig machen.
+
+Neu gegenueber 1.16: im Bearbeiten-Fenster steht links die Struktur als
+Zeichnung. Links sind Kaesten, Gelenke sind die Kanten dazwischen;
+durchgezogen heisst beweglich, gestrichelt fest. Ein Klick waehlt aus und
+fuellt zugleich die Felder rechts. Die Schaltflaechen am Zeigerort fuehren die
+drei Strukturbefehle aus: am Kasten anhaengen, an der Kante einfuegen oder
+herausnehmen. Dieselben Befehle liegen als Tasten unter STRUKTUR.
+
+Damit gibt es drei Arten, den Baum zu aendern, und sie unterscheiden sich
+genau in dem, was mit dem Rest der Kette geschieht:
+
+    anhaengen       neues Blatt am Ende, sonst aendert sich nichts
+    einfuegen       neues Glied zwischen zwei bestehende, der Teilbaum
+                    dahinter bleibt stehen oder wandert mit
+    herausnehmen    ein einzelnes Glied faellt weg, was daran hing,
+                    rueckt eine Stufe hoch
+    Teilbaum        Gelenk und alles dahinter verschwinden
+    loeschen
+
+Aufruf:
+    ./urdf_gui1_18.py                     # Standardpfad aus URDF_PATH
+    ./urdf_gui1_18.py ~/Display/bmKinematic.urdf
+"""
+
+import argparse
+import copy
+import math
+import os
+import re
+import shutil
+import sys
+import tempfile
+import threading
+import time
+import tkinter as tk
+import tkinter.font as tkfont
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from tkinter import ttk, filedialog, messagebox
+
+# ---------- hier URDF eintragen ----------
+URDF_PATH = "/home/fwohlfeil/simple_robot.urdf"
+# ---------- Ablage fuer bearbeitete Staende ----------
+# Absoluter Pfad oder relativ zur geladenen URDF. Wird bei Bedarf angelegt.
+BACKUP_DIR = "/home/fwohlfeil/Display/URDF_Speicher"
+# -----------------------------------------
+
+TF_RATE_HZ = 30.0
+FOOTER_TICK_MS = 50
+MAX_HISTORY = 25                                       # Tiefe von Rueckgaengig
+# Beim Ziehen am Schieber nicht bei jedem Pixel die Tabellen neu bauen.
+# Die TF-Ausgabe bekommt den Wert trotzdem sofort.
+SLIDER_REFRESH_MS = 60
+# Spanne der Schieber, wenn die URDF keinen Anschlag vorgibt.
+FREE_ROTATION_DEG = 180.0
+FREE_TRAVEL_M = 1.0
+# Angestrebte Zahl der Stufen ueber die ganze Spanne. Die Schrittweite ergibt
+# sich daraus und wird auf einen glatten Wert gerundet.
+SLIDER_STEPS = 1000
+
+# ---------- Farben ----------
+# Eine Palette fuer alles: Flaechen hell, Text dunkelgrau statt schwarz,
+# Signalfarben nur dort, wo sie wirklich etwas bedeuten.
+BG = "#eef1f5"                                         # Fensterhintergrund
+SURFACE = "#ffffff"                                    # Karten und Tabellen
+BORDER = "#d5dbe3"
+TEXT = "#1f2933"
+MUTED = "#6b7480"
+FAINT = "#9aa3ad"
+DISABLED = "#a8b0ba"
+DISABLED_BG = "#c3c9d1"
+
+ACCENT = "#2563c9"
+OK_GREEN = "#1a7f37"
+WARN = "#9a6700"
+
+BUTTON = "#e3e8ef"
+BUTTON_HOVER = "#d5dce6"
+BUTTON_DOWN = "#c7cfdb"
+HEADING = "#eaeef3"                                    # Tabellenkopf
+SELECT = "#d3e3fb"
+STRIPE = "#f7f9fb"                                     # jede zweite Zeile
+SCROLL = "#ccd3dc"
+TROUGH = "#dde3ea"                                     # Schienenfarbe der Schieber
+LOG_BG = "#fbfcfd"
+
+TINT_OK = "#e6f4ea"                                    # TCP-Zeile
+TINT_BAD = "#fdeceb"                                   # nicht erreichbarer Frame
+TINT_WARN = "#fdf3e2"
+
+COLOR_STOP = "#d13438"
+COLOR_STOP_HOVER = "#b32b2f"
+COLOR_GO = "#2e7d32"
+COLOR_GO_HOVER = "#256628"
+
+BG_OK = SURFACE                                        # Eingabefeld in Ordnung
+BG_CLAMPED = "#fdf3e2"                                 # auf das Limit begrenzt
+BG_INVALID = "#fbe0e0"                                 # nicht lesbar
+
+# ---------- Masse der Baumansicht ----------
+# Alles in Bildpunkten auf der Zeichenflaeche. Die Werte stehen hier oben,
+# weil das Layout sie zweimal braucht: beim Rechnen der Breiten und beim
+# Zeichnen. Zwei getrennte Zahlensaetze waeren die sichere Quelle fuer
+# Kaesten, die neben ihren Kanten stehen.
+TREE_NODE_W = 128                                      # Breite eines Linkkastens
+TREE_NODE_H = 24                                       # Hoehe eines Linkkastens
+TREE_GAP_X = 22                                        # Luft zwischen Geschwistern
+TREE_GAP_Y = 36                                        # Hoehe einer Gelenkkante
+TREE_MARGIN = 18                                       # Rand der Zeichenflaeche
+TREE_GRAB = 12                                         # Trefferzone neben der Kante
+
+
+# ==========================================================================
+# Matrizen: 4x4 als Liste von Zeilen
+# ==========================================================================
+
+def identity():
+    return [[1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]]
+
+
+def multiply(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def from_rpy_xyz(rpy, xyz):
+    """URDF-origin als 4x4. Feste Achsen: R = Rz(yaw) @ Ry(pitch) @ Rx(roll)."""
+    roll, pitch, yaw = rpy
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    return [
+        [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+        [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+        [-sp,     cp * sr,                cp * cr,                xyz[2]],
+        [0.0,     0.0,                    0.0,                    1.0],
+    ]
+
+
+def from_axis_angle(axis, angle):
+    """Rodrigues-Formel als 4x4. axis muss normiert sein."""
+    x, y, z = axis
+    c, s = math.cos(angle), math.sin(angle)
+    k = 1.0 - c
+    return [
+        [x * x * k + c,     x * y * k - z * s, x * z * k + y * s, 0.0],
+        [y * x * k + z * s, y * y * k + c,     y * z * k - x * s, 0.0],
+        [z * x * k - y * s, z * y * k + x * s, z * z * k + c,     0.0],
+        [0.0,               0.0,               0.0,               1.0],
+    ]
+
+
+def from_translation(xyz):
+    matrix = identity()
+    matrix[0][3], matrix[1][3], matrix[2][3] = xyz
+    return matrix
+
+
+def invert(matrix):
+    """Kehrmatrix einer homogenen Transformation.
+
+    Nicht der allgemeine Fall: der Drehanteil ist orthonormal, seine
+    Kehrmatrix ist die Transponierte. Damit reicht Umsortieren plus drei
+    Skalarprodukte. Eine Gauss-Elimination waere hier nicht nur Aufwand,
+    sondern auch ungenauer, weil sie die Orthonormalitaet nicht ausnutzt.
+
+        R^-1 = R^T        t^-1 = -R^T * t
+    """
+    result = identity()
+    for row in range(3):
+        for column in range(3):
+            result[row][column] = matrix[column][row]
+    for row in range(3):
+        result[row][3] = -sum(matrix[k][row] * matrix[k][3] for k in range(3))
+    return result
+
+
+def to_xyz_rpy(matrix):
+    """4x4 -> ((x, y, z), (roll, pitch, yaw)). Umkehrung von from_rpy_xyz."""
+    xyz = (matrix[0][3], matrix[1][3], matrix[2][3])
+    sp = -matrix[2][0]
+    if abs(sp) >= 1.0 - 1e-9:                          # Gimbal Lock
+        pitch = math.copysign(math.pi / 2.0, sp)
+        roll = 0.0
+        yaw = math.atan2(-matrix[0][1], matrix[1][1])
+    else:
+        pitch = math.asin(sp)
+        roll = math.atan2(matrix[2][1], matrix[2][2])
+        yaw = math.atan2(matrix[1][0], matrix[0][0])
+    return xyz, (roll, pitch, yaw)
+
+
+def to_quaternion(matrix):
+    """4x4 -> (x, y, z, w), Shepperd-Methode."""
+    trace = matrix[0][0] + matrix[1][1] + matrix[2][2]
+    if trace > 0.0:
+        s = math.sqrt(trace + 1.0) * 2.0
+        w = 0.25 * s
+        x = (matrix[2][1] - matrix[1][2]) / s
+        y = (matrix[0][2] - matrix[2][0]) / s
+        z = (matrix[1][0] - matrix[0][1]) / s
+    elif matrix[0][0] > matrix[1][1] and matrix[0][0] > matrix[2][2]:
+        s = math.sqrt(1.0 + matrix[0][0] - matrix[1][1] - matrix[2][2]) * 2.0
+        w = (matrix[2][1] - matrix[1][2]) / s
+        x = 0.25 * s
+        y = (matrix[0][1] + matrix[1][0]) / s
+        z = (matrix[0][2] + matrix[2][0]) / s
+    elif matrix[1][1] > matrix[2][2]:
+        s = math.sqrt(1.0 + matrix[1][1] - matrix[0][0] - matrix[2][2]) * 2.0
+        w = (matrix[0][2] - matrix[2][0]) / s
+        x = (matrix[0][1] + matrix[1][0]) / s
+        y = 0.25 * s
+        z = (matrix[1][2] + matrix[2][1]) / s
+    else:
+        s = math.sqrt(1.0 + matrix[2][2] - matrix[0][0] - matrix[1][1]) * 2.0
+        w = (matrix[1][0] - matrix[0][1]) / s
+        x = (matrix[0][2] + matrix[2][0]) / s
+        y = (matrix[1][2] + matrix[2][1]) / s
+        z = 0.25 * s
+    return x, y, z, w
+
+
+# ==========================================================================
+# URDF einlesen
+# ==========================================================================
+
+# Reihenfolge wie in der Auswahlliste. fixed steht hinten, weil der Wechsel
+# dorthin Achse und Anschlaege verwirft.
+JOINT_TYPES = ("revolute", "continuous", "prismatic", "fixed")
+NEEDS_AXIS = ("revolute", "continuous", "prismatic")
+NEEDS_LIMIT = ("revolute", "prismatic")
+
+# Namen werden zu TF-Frames. Leerzeichen, Schraegstriche und Umlaute machen
+# dort Aerger, deshalb bewusst eng gefasst.
+NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]*$")
+
+# Stellen, mit denen ein <origin> geschrieben wird. Sechs waren es bis 1.17,
+# und fuer getippte Werte reicht das auch. Einfuegen und Herausnehmen rechnen
+# den Ursprung aber ueber eine Matrizenkette neu; dort schlaegt die Rundung
+# als Lageabweichung durch, rund drei Mikrometer je Schritt und ueber mehrere
+# Schritte summiert. Zehn Stellen druecken das auf Maschinengenauigkeit,
+# ohne dass die Datei unleserlich wird: 0.3 bleibt 0.3 und wird nicht zu
+# 0.30000000000000004. Achse und Anschlaege bleiben bei sechs Stellen, sie
+# werden nie nachgerechnet.
+ORIGIN_DIGITS = 10
+
+DEFAULT_EFFORT = "100"
+DEFAULT_VELOCITY = "1.0"
+DEFAULT_AXIS = "0 0 1"
+
+
+def num(elem, name, default=0.0):
+    if elem is None or elem.get(name) is None:
+        return default
+    return float(elem.get(name))
+
+
+def vec(elem, name, default=(0.0, 0.0, 0.0)):
+    if elem is None or elem.get(name) is None:
+        return list(default)
+    return [float(v) for v in elem.get(name).split()]
+
+
+def fmt(values, digits=4):
+    return ", ".join(f"{v:.{digits}f}" for v in values)
+
+
+def fmt_origin(values):
+    """Zahlentripel fuer ein <origin>-Attribut. Einzige Schreibstelle."""
+    return " ".join(f"{v:.{ORIGIN_DIGITS}g}" for v in values)
+
+
+def is_rotational(joint):
+    return joint["type"] in ("revolute", "continuous")
+
+
+def slider_range(joint):
+    """Spanne des Schiebers in Anzeigeeinheit, also grad bzw. m.
+
+    Ohne Anschlag in der URDF (continuous) braucht der Schieber trotzdem
+    zwei Enden. Die Eingabe im Feld bleibt davon unbegrenzt.
+    """
+    if joint["has_limit"]:
+        if is_rotational(joint):
+            return math.degrees(joint["lower"]), math.degrees(joint["upper"])
+        return joint["lower"], joint["upper"]
+    if is_rotational(joint):
+        return -FREE_ROTATION_DEG, FREE_ROTATION_DEG
+    return -FREE_TRAVEL_M, FREE_TRAVEL_M
+
+
+def slider_step(joint):
+    """Schrittweite des Schiebers, passend zur Spanne des Gelenks.
+
+    Eine feste Schrittweite taugt nicht: dieselbe Zahl, die bei einer Achse
+    mit 340 Grad sinnvoll ist, waere bei einem Hub von 40 mm die ganze
+    Spanne. Deshalb aus der Spanne abgeleitet und auf 1, 2, 2.5 oder 5 mal
+    Zehnerpotenz gerundet, damit runde Werte auf dem Raster liegen.
+    """
+    low, high = slider_range(joint)
+    span = abs(high - low)
+    if span < 1e-12:
+        return 1e-3
+    raw = span / SLIDER_STEPS
+    exponent = math.floor(math.log10(raw))
+    for nice in (1.0, 2.0, 2.5, 5.0):
+        step = nice * 10.0 ** exponent
+        if step >= raw:
+            return step
+    return 10.0 ** (exponent + 1)
+
+
+def value_digits(step):
+    """Nachkommastellen, die zur Schrittweite passen.
+
+    Mindestens zwei, damit Winkel weiter wie gewohnt mit zwei Stellen
+    dastehen; bei feinen Schritten entsprechend mehr.
+    """
+    if step >= 1.0:
+        return 2
+    return max(2, min(6, int(math.ceil(-math.log10(step)))))
+
+
+def limit_digits(joint):
+    """Stellen fuer die Anzeige der Anschlaege.
+
+    Gedeckelt, damit die Spalte nicht ueberlaeuft; die Werte im Eingabefeld
+    duerfen feiner sein als diese Kurzanzeige.
+    """
+    return min(4, value_digits(slider_step(joint)))
+
+
+def snap(value, low, high, step):
+    """Auf das Raster legen und in der Spanne halten.
+
+    Verankert bei null, nicht am unteren Anschlag: sonst laege die
+    Nullstellung zwischen zwei Stufen und waere mit dem Schieber nicht
+    genau zu treffen. Die Anschlaege liegen meist neben dem Raster, weil sie
+    aus gerundeten Radiant stammen; die letzte halbe Stufe faengt deshalb
+    auf den Anschlag, damit er auch am Schieber genau erreichbar bleibt.
+    """
+    if value >= high - step / 2.0:
+        return high
+    if value <= low + step / 2.0:
+        return low
+    return min(max(round(value / step) * step, low), high)
+
+
+def parse_root(root):
+    """Aus einem ElementTree-Baum lesen. Gibt (name, links, joints) zurueck."""
+    links = []
+    for link in root.findall("link"):
+        inertial = link.find("inertial")
+        links.append({
+            "name": link.get("name"),
+            "mass": num(inertial.find("mass") if inertial is not None else None, "value"),
+            "com": vec(inertial.find("origin") if inertial is not None else None, "xyz"),
+            "has_inertial": inertial is not None,
+        })
+
+    joints = []
+    for joint in root.findall("joint"):
+        origin = joint.find("origin")
+        limit = joint.find("limit")
+        rpy = vec(origin, "rpy")
+        xyz = vec(origin, "xyz")
+
+        axis = vec(joint.find("axis"), "xyz", (1.0, 0.0, 0.0))
+        length = math.sqrt(sum(a * a for a in axis))
+        axis = [a / length for a in axis] if length > 1e-12 else [1.0, 0.0, 0.0]
+
+        jtype = joint.get("type")
+        joints.append({
+            "name": joint.get("name"),
+            "type": jtype,
+            "parent": joint.find("parent").get("link") if joint.find("parent") is not None else None,
+            "child": joint.find("child").get("link") if joint.find("child") is not None else None,
+            "xyz": xyz,
+            "rpy": rpy,
+            "origin": from_rpy_xyz(rpy, xyz),          # konstant, vorab gerechnet
+            "quat": to_quaternion(from_rpy_xyz(rpy, xyz)),
+            "axis": axis,
+            "lower": num(limit, "lower"),
+            "upper": num(limit, "upper"),
+            "effort": num(limit, "effort"),
+            "velocity": num(limit, "velocity"),
+            # continuous hat definitionsgemaess keinen Anschlag
+            "has_limit": limit is not None and jtype != "continuous",
+        })
+
+    return root.get("name"), links, joints
+
+
+def parse(path):
+    """URDF-Datei einlesen. Gibt (root, name, links, joints, xml) zurueck."""
+    with open(path, "r") as handle:
+        urdf_xml = handle.read()
+    root = ET.fromstring(urdf_xml)
+    name, links, joints = parse_root(root)
+    return root, name, links, joints, urdf_xml
+
+
+def serialize(root):
+    """Baum als eingerueckten XML-Text. ET.indent gibt es ab Python 3.9."""
+    copied = copy.deepcopy(root)
+    try:
+        ET.indent(copied, space="  ")
+    except AttributeError:
+        pass
+    return ET.tostring(copied, encoding="unicode")
+
+
+def set_axis(element, axis):
+    """<axis> setzen oder entfernen. axis None heisst: Typ braucht keine."""
+    existing = element.find("axis")
+    if axis is None:
+        if existing is not None:
+            element.remove(existing)
+        return
+    if existing is None:
+        existing = ET.SubElement(element, "axis")
+    existing.set("xyz", " ".join(f"{v:.6g}" for v in axis))
+
+
+def set_limit(element, lower, upper, keep=False):
+    """<limit> setzen oder entfernen.
+
+    Bei `keep` bleibt das Element mit effort und velocity erhalten, nur die
+    Anschlaege verschwinden. Das ist der Fall continuous: die Achse dreht
+    durch, die Grenzwerte fuer Moment und Drehzahl gelten weiter.
+    """
+    existing = element.find("limit")
+    if lower is None:
+        if existing is None:
+            if not keep:
+                return
+            # continuous ohne <limit>: Moment und Drehzahl gehoeren trotzdem
+            # hinein, sonst fehlen sie nachgelagerten Werkzeugen.
+            existing = ET.SubElement(element, "limit")
+            existing.set("effort", DEFAULT_EFFORT)
+            existing.set("velocity", DEFAULT_VELOCITY)
+            return
+        if not keep:
+            element.remove(existing)
+            return
+        for attribute in ("lower", "upper"):
+            existing.attrib.pop(attribute, None)
+        return
+    if existing is None:
+        existing = ET.SubElement(element, "limit")
+    # In der URDF Pflichtangaben, vorhandene Werte nicht ueberschreiben.
+    existing.set("effort", existing.get("effort") or DEFAULT_EFFORT)
+    existing.set("velocity", existing.get("velocity") or DEFAULT_VELOCITY)
+    existing.set("lower", f"{lower:.6g}")
+    existing.set("upper", f"{upper:.6g}")
+
+
+def name_problem(name, kind, taken):
+    """Meldung zum Namen oder None, wenn er brauchbar ist."""
+    name = (name or "").strip()
+    if not name:
+        return f"{kind}: Name fehlt"
+    if not NAME_PATTERN.match(name):
+        return (f'{kind} "{name}": erlaubt sind Buchstabe oder Unterstrich am '
+                f"Anfang, danach Buchstaben, Ziffern, _ . -")
+    if name in taken:
+        return f'{kind} "{name}" ist schon vergeben'
+    return None
+
+
+def subtree_links(joints, start):
+    """`start` und alles, was daran haengt. Kreisfest."""
+    kids = {}
+    for joint in joints:
+        kids.setdefault(joint["parent"], []).append(joint["child"])
+    found, stack = [], [start]
+    while stack:
+        name = stack.pop()
+        if name in found:                              # Kreis, nicht zweimal
+            continue
+        found.append(name)
+        stack.extend(kids.get(name, []))
+    return found
+
+
+def append_limb(root, link_name, joint_name, jtype, parent,
+                xyz, rpy, axis, lower, upper):
+    """Neuen Link samt zufuehrendem Gelenk anhaengen.
+
+    Beides zusammen, nie einzeln: ein Link ohne Gelenk waere ein zweiter
+    Wurzel-Link, ein Gelenk ohne Link haette kein Ziel. Der Baum bleibt so in
+    jedem Zwischenschritt gueltig.
+    """
+    link = ET.SubElement(root, "link")
+    link.set("name", link_name)
+
+    joint = ET.SubElement(root, "joint")
+    joint.set("name", joint_name)
+    joint.set("type", jtype)
+    ET.SubElement(joint, "parent").set("link", parent)
+    ET.SubElement(joint, "child").set("link", link_name)
+    origin = ET.SubElement(joint, "origin")
+    origin.set("xyz", fmt_origin(xyz))
+    origin.set("rpy", fmt_origin(rpy))
+    set_axis(joint, axis)
+    set_limit(joint, lower, upper, keep=(jtype == "continuous"))
+    return joint
+
+
+def insert_limb(root, link_name, joint_name, jtype, below,
+                xyz, rpy, axis, lower, upper, keep_pose):
+    """Neues Glied zwischen zwei bestehende haengen.
+
+    Aus   A --below--> B   wird   A --joint_name--> N --below--> B.
+
+    Drei Eingriffe, die nur zusammen einen gueltigen Baum ergeben und deshalb
+    im selben Entwurf laufen muessen:
+
+        1. Link N und das zufuehrende Gelenk von A nach N anlegen,
+        2. bei `below` den Elternteil von A auf N umschreiben,
+        3. den Ursprung von `below` umrechnen, falls gewuenscht.
+
+    Punkt 2 ist der Unterschied zu append_limb: dort entsteht immer ein Blatt,
+    weil kein bestehendes Gelenk angefasst wird. Hier wandert ein vorhandener
+    Teilbaum an eine neue Stelle, und genau deshalb bleibt die Kette eine
+    Kette statt sich zu verzweigen.
+
+    Zu Punkt 3: der Ursprung von `below` ist in A angeschrieben. Sitzt N mit
+    T_neu unter A, so beschreibt derselbe Zahlensatz jetzt eine Lage relativ
+    zu N und der ganze Teilbaum hinter B wandert um T_neu mit. Soll er
+    stehenbleiben, bekommt `below` neu
+
+        T_rest = T_neu^-1 * T_alt
+
+    denn dann gilt wieder T_neu * T_rest = T_alt. Beides kann gewollt sein --
+    ein Sensorframe zieht man nachtraeglich ein, ohne dass sich der Roboter
+    bewegt, ein echtes Zwischenstueck verlaengert die Kette absichtlich --
+    deshalb entscheidet der Aufrufer und nicht diese Funktion.
+    """
+    existing = next((j for j in root.findall("joint")
+                     if j.get("name") == below), None)
+    if existing is None:
+        raise ValueError(f"Gelenk {below} ist nicht mehr im Baum")
+    parent_element = existing.find("parent")
+    if parent_element is None:
+        raise ValueError(f"Gelenk {below} hat kein <parent>")
+
+    # Erst das neue Glied, dann umhaengen. Andere Reihenfolge ginge auch, so
+    # ist der Entwurf aber nie in einem Zustand ohne Ziel fuer <parent>.
+    joint = append_limb(root, link_name, joint_name, jtype,
+                        parent_element.get("link"),
+                        xyz, rpy, axis, lower, upper)
+
+    if keep_pose:
+        origin = existing.find("origin")
+        old = from_rpy_xyz(vec(origin, "rpy"), vec(origin, "xyz"))
+        rest = multiply(invert(from_rpy_xyz(rpy, xyz)), old)
+        rest_xyz, rest_rpy = to_xyz_rpy(rest)
+        if origin is None:
+            origin = ET.SubElement(existing, "origin")
+        origin.set("xyz", fmt_origin(rest_xyz))
+        origin.set("rpy", fmt_origin(rest_rpy))
+
+    parent_element.set("link", link_name)
+    return joint
+
+
+def remove_limb(root, joint_name, keep_pose):
+    """Ein einzelnes Glied aus der Kette nehmen, ohne den Rest zu verlieren.
+
+    Aus   A --joint_name--> B --k--> C   wird   A --k--> C.
+
+    Die Umkehrung von insert_limb und der Gegenpol zu remove_branch: dort
+    faellt alles hinter dem Gelenk weg, hier nur das eine Glied. Was daran
+    hing, wandert eine Stufe hoch.
+
+    Link und Gelenk verschwinden zwangslaeufig gemeinsam, so wie sie in
+    append_limb gemeinsam entstehen. Bliebe das Gelenk ohne Kindlink, haette
+    es kein Ziel; bliebe der Link ohne zufuehrendes Gelenk, waere er ein
+    zweiter Wurzel-Link. Beides waere keine gueltige URDF.
+
+    Zu `keep_pose`: die Urspruenge der Kindgelenke sind in B angeschrieben.
+    Faellt B weg, muessen sie in A stehen, also
+
+        T_neu = T_joint_name * T_alt
+
+    denn genau diese Verkettung lief vorher ueber B. Ist das Gelenk beweglich,
+    gilt die Rechnung fuer Stellung null: mit dem Gelenk verschwindet auch
+    sein Freiheitsgrad, eine andere Stellung liesse sich gar nicht erhalten.
+    """
+    element = next((j for j in root.findall("joint")
+                    if j.get("name") == joint_name), None)
+    if element is None:
+        raise ValueError(f"Gelenk {joint_name} ist nicht mehr im Baum")
+    parent_element = element.find("parent")
+    child_element = element.find("child")
+    if parent_element is None or child_element is None:
+        raise ValueError(f"Gelenk {joint_name} hat kein <parent> oder <child>")
+
+    above = parent_element.get("link")
+    gone = child_element.get("link")
+    origin = element.find("origin")
+    lift = from_rpy_xyz(vec(origin, "rpy"), vec(origin, "xyz"))
+
+    for other in root.findall("joint"):
+        hook = other.find("parent")
+        if hook is None or hook.get("link") != gone:
+            continue
+        if keep_pose:
+            child_origin = other.find("origin")
+            rest = multiply(lift, from_rpy_xyz(vec(child_origin, "rpy"),
+                                               vec(child_origin, "xyz")))
+            rest_xyz, rest_rpy = to_xyz_rpy(rest)
+            if child_origin is None:
+                child_origin = ET.SubElement(other, "origin")
+            child_origin.set("xyz", fmt_origin(rest_xyz))
+            child_origin.set("rpy", fmt_origin(rest_rpy))
+        hook.set("link", above)
+
+    root.remove(element)
+    for link in list(root.findall("link")):
+        if link.get("name") == gone:
+            root.remove(link)
+    return gone
+
+
+def remove_branch(root, link_names):
+    """Links und alle Gelenke entfernen, die dorthin fuehren."""
+    names = set(link_names)
+    for link in list(root.findall("link")):
+        if link.get("name") in names:
+            root.remove(link)
+    for joint in list(root.findall("joint")):
+        child = joint.find("child")
+        if child is not None and child.get("link") in names:
+            root.remove(joint)
+
+
+def backup_dir_for(path):
+    """Ablageordner, wird bei Bedarf angelegt."""
+    if os.path.isabs(BACKUP_DIR):
+        folder = BACKUP_DIR
+    else:
+        folder = os.path.join(os.path.dirname(os.path.abspath(path)), BACKUP_DIR)
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+STAMP = re.compile(r"_\d{8}_\d{6}$")
+
+
+def timestamped_name(path):
+    """Dateiname mit Zeitstempel, Endung bleibt erhalten.
+
+    Ein bereits vorhandener Stempel wird ersetzt, sonst haengt sich beim
+    Speichern einer Ablagedatei ein zweiter an den Namen.
+    """
+    stem, suffix = os.path.splitext(os.path.basename(path))
+    return f"{STAMP.sub('', stem)}_{datetime.now():%Y%m%d_%H%M%S}{suffix or '.urdf'}"
+
+
+def save_urdf(path, xml_text):
+    """Atomar schreiben. Wird eine vorhandene Datei ueberschrieben, kommt
+    vorher eine Sicherungskopie in den Ablageordner."""
+    backup = None
+    if os.path.exists(path):
+        backup = os.path.join(backup_dir_for(path), timestamped_name(path))
+        shutil.copy2(path, backup)
+
+    # Die temporaere Datei muss im Zielordner liegen. Ueber Dateisystemgrenzen
+    # hinweg kopiert os.replace und ist dann nicht mehr atomar.
+    handle_fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)),
+                                      suffix=".tmp")
+    try:
+        with os.fdopen(handle_fd, "w") as handle:
+            handle.write(xml_text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)                          # atomar im selben Dateisystem
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return backup
+
+
+def duplicates(names):
+    """Namen, die mehr als einmal vorkommen."""
+    seen, twice = set(), set()
+    for name in names:
+        if name in seen:
+            twice.add(name)
+        seen.add(name)
+    return sorted(twice)
+
+
+def validate_root(root):
+    """Prueft den Baum. Gibt eine Liste von Fehlermeldungen zurueck.
+
+    Die Pruefung ist die einzige Instanz, die den Bediener vor einem kaputten
+    Modell schuetzt: robot_state_publisher rechnet nur Vorwaertskinematik und
+    beanstandet nichts.
+    """
+    errors = []
+    joints = root.findall("joint")
+    link_elements = root.findall("link")
+    link_names = [l.get("name") for l in link_elements]
+    links = {n for n in link_names if n}
+    children = []
+
+    # -- Namen ------------------------------------------------------------
+    if sum(1 for n in link_names if not (n or "").strip()):
+        errors.append("Ein Link hat keinen Namen")
+    for name in duplicates([n for n in link_names if n]):
+        errors.append(f'Linkname "{name}" ist mehrfach vergeben')
+    for name in duplicates([j.get("name") for j in joints if j.get("name")]):
+        errors.append(f'Gelenkname "{name}" ist mehrfach vergeben')
+
+    for joint in joints:
+        name = joint.get("name")
+        if not (name or "").strip():
+            errors.append("Ein Gelenk hat keinen Namen")
+            continue
+
+        # -- Typ ----------------------------------------------------------
+        jtype = joint.get("type")
+        if jtype not in JOINT_TYPES:
+            errors.append(f'{name}: Typ "{jtype}" ist keiner der erlaubten '
+                          f'({", ".join(JOINT_TYPES)})')
+
+        # -- Verknuepfung -------------------------------------------------
+        for role in ("parent", "child"):
+            element = joint.find(role)
+            if element is None:
+                errors.append(f"{name}: <{role}> fehlt")
+                continue
+            link = element.get("link")
+            if link not in links:
+                errors.append(f'{name}: Link "{link}" ist nicht deklariert')
+            if role == "child":
+                children.append(link)
+
+        # -- Anschlaege ---------------------------------------------------
+        limit = joint.find("limit")
+        if jtype in NEEDS_LIMIT:
+            if limit is None:
+                errors.append(f"{name}: {jtype} braucht <limit>, sonst ist die "
+                              f"Achse unbegrenzt")
+            else:
+                for required in ("effort", "velocity"):
+                    if limit.get(required) is None:
+                        errors.append(f"{name}: <limit> ohne {required}")
+                try:
+                    lower = float(limit.get("lower", 0.0))
+                    upper = float(limit.get("upper", 0.0))
+                except ValueError:
+                    errors.append(f"{name}: Grenzwert ist keine Zahl")
+                else:
+                    if lower >= upper:
+                        errors.append(f"{name}: untere Grenze muss kleiner als "
+                                      f"die obere sein")
+
+        # -- Achse --------------------------------------------------------
+        if jtype in NEEDS_AXIS:
+            axis = joint.find("axis")
+            if axis is not None:
+                try:
+                    values = [float(v) for v in (axis.get("xyz") or "").split()]
+                except ValueError:
+                    values = []
+                if len(values) != 3:
+                    errors.append(f"{name}: <axis> braucht drei Zahlen")
+                elif math.sqrt(sum(v * v for v in values)) < 1e-9:
+                    errors.append(f"{name}: <axis> ist der Nullvektor")
+
+    if len(set(children)) != len(children):
+        errors.append(f"Mehrere Eltern fuer: {', '.join(duplicates(children))}")
+
+    roots = links - set(children)
+    if len(roots) != 1:
+        errors.append(f"Genau ein Wurzel-Link erwartet, gefunden: {len(roots)}")
+
+    # -- Kreise -----------------------------------------------------------
+    # Ein Kreis faellt sonst durch: jeder seiner Links hat genau einen Vater
+    # und ist damit kein Wurzel-Link. Die FK laesst ihn stillschweigend weg.
+    reachable = set(roots)
+    pending = [j for j in joints
+               if j.find("parent") is not None and j.find("child") is not None]
+    while pending:
+        progressed = False
+        for joint in list(pending):
+            if joint.find("parent").get("link") in reachable:
+                reachable.add(joint.find("child").get("link"))
+                pending.remove(joint)
+                progressed = True
+        if not progressed:
+            break
+    unreachable = sorted(links - reachable)
+    if unreachable:
+        errors.append(f"Nicht von der Wurzel erreichbar, vermutlich ein Kreis: "
+                      f"{', '.join(unreachable)}")
+
+    return errors
+
+
+# ==========================================================================
+# Vorwaertskinematik
+# ==========================================================================
+
+def local_transform(joint, value):
+    """Parent -> Child bei Gelenkwert `value` (rad bzw. m)."""
+    if joint["type"] in ("revolute", "continuous"):
+        return multiply(joint["origin"], from_axis_angle(joint["axis"], value))
+    if joint["type"] == "prismatic":
+        return multiply(joint["origin"],
+                        from_translation([a * value for a in joint["axis"]]))
+    return joint["origin"]
+
+
+def root_links(links, joints):
+    """Links, die in keinem <child> vorkommen."""
+    children = {j["child"] for j in joints}
+    return [l["name"] for l in links if l["name"] not in children]
+
+
+def leaf_links(links, joints):
+    """Links, die in keinem <parent> vorkommen. Kandidaten fuer den TCP."""
+    parents = {j["parent"] for j in joints}
+    return [l["name"] for l in links if l["name"] not in parents]
+
+
+def tree_layout(links, joints):
+    """Mitte und Oberkante jedes Linkkastens. Gibt {linkname: (x, y)} zurueck.
+
+    Zweipass, wie beim Setzen einer Tabelle:
+
+        1. von unten nach oben: wie breit ist der Teilbaum unter einem Link,
+        2. von oben nach unten: diese Breiten nebeneinander legen und jeden
+           Link mittig ueber seine Kinder setzen.
+
+    Ohne den ersten Durchlauf wuesste man beim Platzieren des Vaters noch
+    nicht, wie viel Platz die Kinder brauchen; man muesste raten und spaeter
+    verschieben. Die Tiefe bestimmt allein die Zeile, deshalb liegen alle
+    Kinder eines Links garantiert auf einer Hoehe.
+
+    `seen` bricht Kreise ab. Ein Kreis ist keine gueltige URDF, aber die
+    Ansicht wird auch fuer eine geladene Datei gezeichnet, die die Pruefung
+    nur bemaengelt hat. Links, die von keiner Wurzel aus erreichbar sind,
+    tauchen nicht auf; der Aufrufer sieht das am Vergleich der Anzahlen.
+    """
+    kids = {}
+    for joint in joints:
+        kids.setdefault(joint["parent"], []).append(joint)
+
+    width = {}
+
+    def measure(link, seen):
+        if link in seen:
+            return TREE_NODE_W
+        seen = seen | {link}
+        spans = [measure(j["child"], seen) for j in kids.get(link, ())]
+        total = sum(spans) + TREE_GAP_X * (len(spans) - 1) if spans else 0.0
+        width[link] = max(TREE_NODE_W, total)
+        return width[link]
+
+    def place(link, left, depth, seen):
+        if link in seen:
+            return
+        seen = seen | {link}
+        nodes[link] = (left + width[link] / 2.0,
+                       TREE_MARGIN + depth * (TREE_NODE_H + TREE_GAP_Y))
+        offset = left
+        for joint in kids.get(link, ()):
+            child = joint["child"]
+            if child in seen:
+                continue
+            place(child, offset, depth + 1, seen)
+            offset += width[child] + TREE_GAP_X
+
+    nodes = {}
+    left = TREE_MARGIN
+    # Mehrere Wurzeln sind ungueltig, kommen beim Laden einer fremden Datei
+    # aber vor. Dann stehen die Baeume nebeneinander, statt dass die Ansicht
+    # leer bleibt und der Fehler unsichtbar wird.
+    for root in root_links(links, joints):
+        measure(root, frozenset())
+        place(root, left, 0, frozenset())
+        left += width[root] + 3 * TREE_GAP_X
+    return nodes
+
+
+def forward_kinematics(links, joints, positions):
+    """{linkname: 4x4} relativ zum Wurzel-Link, in einem Durchlauf."""
+    roots = root_links(links, joints)
+    if not roots:
+        return {}                                      # Zyklus, nichts berechenbar
+
+    poses = {roots[0]: identity()}
+    pending = list(joints)
+    while pending:
+        progressed = False
+        for joint in list(pending):
+            if joint["parent"] in poses:
+                poses[joint["child"]] = multiply(
+                    poses[joint["parent"]],
+                    local_transform(joint, positions.get(joint["name"], 0.0)))
+                pending.remove(joint)
+                progressed = True
+        if not progressed:
+            break                                      # abgehaengter Teilbaum
+    return poses
+
+
+# ==========================================================================
+# ROS-Anbindung
+# ==========================================================================
+
+class RosBridge:
+    """Node, Spin-Thread und TF-Ausgabe. Alle ROS-Importe liegen hier drin."""
+
+    def __init__(self):
+        self.node = None
+        self.error = None
+        self.tick_count = 0
+        self.enabled = True
+
+        # Vom Executor-Thread geschrieben, vom GUI-Thread gelesen. Einzelne
+        # float-Zuweisungen sind unter dem GIL atomar, ein Lock ist unnoetig.
+        self.last_publish = None                       # time.monotonic()
+        self.cycle_ms = None                           # geglaetteter Zyklusabstand
+
+        self._lock = threading.Lock()
+        self._broadcast = []                           # alle Gelenke, die auf /tf gehen
+        self._positions = {}
+        self._executor = None
+        self._thread = None
+        self._timer = None
+        self._broadcaster = None
+        self._description_pub = None
+
+    @property
+    def running(self):
+        return self.node is not None
+
+    # -- Lebenszyklus ------------------------------------------------------
+
+    def start(self):
+        """Node hochfahren. Gibt None zurueck oder eine Fehlermeldung."""
+        if self.running:
+            return None
+        try:
+            import rclpy
+            from rclpy.executors import SingleThreadedExecutor
+            from rclpy.node import Node
+            from rclpy.qos import (QoSProfile, DurabilityPolicy,
+                                   ReliabilityPolicy, HistoryPolicy)
+            from std_msgs.msg import String
+            from tf2_ros import TransformBroadcaster
+        except ImportError as exc:
+            self.error = f"ROS 2 nicht verfuegbar ({exc.name}). Nur Anzeige und FK."
+            return self.error
+
+        rclpy.init()
+        self.node = Node("urdf_gui_tf")
+        self._broadcaster = TransformBroadcaster(self.node)
+
+        qos = QoSProfile(
+            depth=1,
+            history=HistoryPolicy.KEEP_LAST,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._description_pub = self.node.create_publisher(String, "robot_description", qos)
+
+        self._timer = self.node.create_timer(1.0 / TF_RATE_HZ, self._on_timer)
+
+        self._executor = SingleThreadedExecutor()
+        self._executor.add_node(self.node)
+        self._thread = threading.Thread(target=self._executor.spin, daemon=True)
+        self._thread.start()
+        return None
+
+    def shutdown(self):
+        if not self.running:
+            return
+        import rclpy
+        self._executor.shutdown()
+        self.node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        self.node = None
+
+    # -- Modell und Werte --------------------------------------------------
+
+    def set_model(self, joints, urdf_xml):
+        """Neues Modell uebernehmen. Alle Frames laufen zyklisch ueber /tf.
+
+        Feste Gelenke bewusst NICHT auf /tf_static: dort abgelegte Frames
+        landen in einem Cache, der nie verfaellt. Nach einem Modellwechsel
+        blieben sie als Geisterframes in RViz stehen, und loeschen laesst sich
+        in tf2 nichts. Ueber /tf verfallen sie nach der Cache-Zeit von selbst.
+        """
+        if not self.running:
+            return self.error or "Kein ROS-Node aktiv"
+
+        from std_msgs.msg import String
+
+        usable = [j for j in joints if j["parent"] and j["child"]]
+        movable = [j for j in usable if j["type"] != "fixed"]
+
+        self._description_pub.publish(String(data=urdf_xml))
+
+        with self._lock:
+            self._broadcast = usable
+            self._positions = {j["name"]: 0.0 for j in movable}
+        self.tick_count = 0
+        self.last_publish = None
+        self.cycle_ms = None
+
+        self._publish_once()                           # nicht auf den Timer warten
+
+        return (f"{len(usable)} Frames auf /tf mit {TF_RATE_HZ:.0f} Hz "
+                f"({len(movable)} beweglich), robot_description gesendet")
+
+    def set_positions(self, positions):
+        """Sollwerte uebernehmen. Wird aus dem GUI-Thread aufgerufen."""
+        with self._lock:
+            self._positions = dict(positions)
+
+    # -- Ausgabe -----------------------------------------------------------
+
+    def _message(self, joint, matrix, stamp):
+        from geometry_msgs.msg import TransformStamped
+        msg = TransformStamped()
+        msg.header.stamp = stamp
+        msg.header.frame_id = joint["parent"]
+        msg.child_frame_id = joint["child"]
+        msg.transform.translation.x = matrix[0][3]
+        msg.transform.translation.y = matrix[1][3]
+        msg.transform.translation.z = matrix[2][3]
+        qx, qy, qz, qw = to_quaternion(matrix)
+        msg.transform.rotation.x = qx
+        msg.transform.rotation.y = qy
+        msg.transform.rotation.z = qz
+        msg.transform.rotation.w = qw
+        return msg
+
+    def _publish_once(self):
+        """Einen Zyklus senden. Feste Gelenke liefern dabei stets ihr origin."""
+        with self._lock:
+            frames = list(self._broadcast)
+            positions = dict(self._positions)
+        if not frames:
+            return
+
+        stamp = self.node.get_clock().now().to_msg()
+        self._broadcaster.sendTransform([
+            self._message(j, local_transform(j, positions.get(j["name"], 0.0)), stamp)
+            for j in frames
+        ])
+
+        now = time.monotonic()
+        if self.last_publish is not None:
+            delta_ms = (now - self.last_publish) * 1000.0
+            self.cycle_ms = (delta_ms if self.cycle_ms is None
+                             else 0.9 * self.cycle_ms + 0.1 * delta_ms)
+        self.last_publish = now
+        self.tick_count += 1
+
+    def _on_timer(self):
+        """Laeuft im Executor-Thread. Nur lesen, was unter dem Lock geholt wurde."""
+        if not self.enabled:
+            return
+        self._publish_once()
+
+
+# ==========================================================================
+# GUI
+# ==========================================================================
+
+# Spalten: Schluessel, Ueberschrift, Breite, Ausrichtung.
+# Zahlen stehen rechts, damit die Kommastellen untereinander liegen.
+# Der Framename steht in der Baumspalte #0, damit die Einrueckung dort
+# sichtbar wird. Deshalb taucht er hier nicht mehr auf.
+FRAME_TREE = ("Frame", 150)                            # Mindestbreite, waechst mit
+TREE_INDENT = 14                                       # Einrueckung je Ebene
+TREE_MAX_WIDTH = 330                                   # sonst ufert die Spalte aus
+FRAME_COLUMNS = [
+    ("x",     "X [m]",    64, "e"),
+    ("y",     "Y [m]",    64, "e"),
+    ("z",     "Z [m]",    64, "e"),
+    ("roll",  "R [deg]",  66, "e"),
+    ("pitch", "P [deg]",  66, "e"),
+    ("yaw",   "Y [deg]",  66, "e"),
+]
+
+JOINT_COLUMNS = [
+    ("name",  "Gelenk",       90, "w"),
+    ("type",  "Typ",          78, "w"),
+    ("rad",   "rad/m",        74, "e"),
+    ("grad",  "grad/mm",      76, "e"),
+    ("limit", "Grenzen",     132, "e"),
+    ("chain", "Kette",       117, "w"),
+]
+
+LINK_COLUMNS = [
+    ("name", "Link",        160, "w"),
+    ("mass", "Masse [kg]",   95, "e"),
+    ("com",  "COM xyz [m]", 175, "w"),
+]
+
+CART_FIELDS = [("x", "X", "m"), ("y", "Y", "m"), ("z", "Z", "m"),
+               ("roll", "Roll", "deg"), ("pitch", "Pitch", "deg"),
+               ("yaw", "Yaw", "deg")]
+
+MOTION_FIELDS = [("jerk", "Jerk", "m/s3", 10.0),
+                 ("acceleration", "Acceleration", "m/s2", 2.0),
+                 ("speed", "Speed", "m/s", 0.5)]
+
+PAD = 10                                               # ein Rastermass fuer alles
+
+
+class UrdfViewer(tk.Tk):
+
+    def __init__(self, urdf_path):
+        super().__init__()
+        self.title("URDF Viewer")
+        self.geometry("1560x900")
+        self.minsize(1220, 700)
+        self.configure(background=BG)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        self.urdf_path = urdf_path
+        self.robot_name = ""
+        self.xml_root = None                           # bearbeiteter Baum, die Wahrheit
+        self.links = []
+        self.joints = []
+        self.urdf_xml = ""
+        self.dirty = False                             # geaendert, aber nicht gespeichert
+        self.stopped = False                           # STOP gedrueckt
+        self.positions = {}                            # {gelenkname: rad bzw. m}
+        self.entries = {}                              # {gelenkname: tk.Entry}
+        self.sliders = {}                              # {gelenkname: ttk.Scale}
+        self.syncing = False                           # Schieber wird gerade gesetzt
+        self.refresh_job = None                        # laufender after-Aufruf
+        self.cart_entries = {}                         # Zielvorgabe kartesisch
+        self.motion_entries = {}                       # Jerk, Acceleration, Speed
+        self.motion = {key: default for key, _l, _u, default in MOTION_FIELDS}
+        self.frames_shown = True                       # Frames-Karte sichtbar
+        self.frame_items = {}                          # {linkname: iid im Baum}
+        self.frame_layout = None                       # {linkname: elternname}
+        self.editor = None                             # Bearbeiten-Fenster oder None
+        self.edit_entries = {}
+        self.add_window = None                         # Anhaengen-Fenster oder None
+        self.add_entries = {}
+        self.insert_window = None                      # Einfuegen-Fenster oder None
+        self.insert_entries = {}
+        self.insert_below = None                       # Gelenk, vor das eingefuegt wird
+        self.tree_canvas = None                        # Zeichenflaeche der Karte Baum
+        self.tree_boxes = {}                           # {linkname: (x0, y0, x1, y1)}
+        self.tree_zones = {}                           # {gelenkname: (x0, y0, x1, y1)}
+        self.tree_selected = None                      # ausgewaehltes Gelenk oder None
+        self.tree_hover = None                         # ("node"/"edge", name) oder None
+        self.tree_pills = []                           # [(Rechteck, Befehl)]
+        self.remove_window = None                      # Herausnehmen-Fenster oder None
+        self.remove_joint = None                       # Gelenk, das herausfaellt
+        self.history = []                              # (Text, xml_root-Kopie)
+        self.saved_signature = None                    # Stand der Datei zum Vergleich
+        self.undo_button = None
+        self.go_buttons = []
+
+        self.robot_var = tk.StringVar(value="kein Modell")
+        self.info_var = tk.StringVar(value="")
+        self.path_var = tk.StringVar(value=os.path.basename(urdf_path))
+        self.tcp_var = tk.StringVar(value="")
+        self.session_var = tk.StringVar(value="Session  00:00:00:000")
+        self.refresh_var = tk.StringVar(value="Last Refresh  --")
+        self.edit_joint_var = tk.StringVar(value="")
+        self.edit_info_var = tk.StringVar(value="")
+        self.edit_unit_var = tk.StringVar(value="")
+        self.edit_type_var = tk.StringVar(value="")
+        self.add_type_var = tk.StringVar(value="revolute")
+        self.add_parent_var = tk.StringVar(value="")
+        self.add_unit_var = tk.StringVar(value="")
+        self.insert_type_var = tk.StringVar(value="fixed")
+        self.insert_unit_var = tk.StringVar(value="")
+        self.insert_info_var = tk.StringVar(value="")
+        self.insert_keep_var = tk.BooleanVar(value=True)
+        self.remove_keep_var = tk.BooleanVar(value=True)
+        self.remove_info_var = tk.StringVar(value="")
+        self.tree_hint_var = tk.StringVar(value="")
+        self.send_tf = tk.BooleanVar(value=True)
+
+        self.session_start = time.monotonic()
+        self.ros = RosBridge()
+
+        self._setup_fonts()
+        self._setup_style()
+        self._build_ui()
+        self._start_ros()
+        self._load(urdf_path, initial=True)
+        self._tick()
+
+    # ----------------------------------------------------------------------
+    # Aussehen
+    # ----------------------------------------------------------------------
+
+    def _setup_fonts(self):
+        """Die benannten Tk-Schriften einmal zentral setzen.
+
+        Der Standard ist auf vielen Linux-Systemen ein sehr kleines Bitmapfont.
+        Es wird die erste Schrift genommen, die tatsaechlich vorhanden ist.
+        """
+        available = set(tkfont.families())
+
+        base = tkfont.nametofont("TkDefaultFont")
+        for family in ("Ubuntu", "Noto Sans", "DejaVu Sans", "Segoe UI", "Cantarell"):
+            if family in available:
+                base.configure(family=family)
+                break
+        base.configure(size=10)
+        tkfont.nametofont("TkTextFont").configure(**base.actual())
+
+        mono = tkfont.nametofont("TkFixedFont")
+        for family in ("Ubuntu Mono", "DejaVu Sans Mono", "Noto Sans Mono",
+                       "Liberation Mono", "Consolas"):
+            if family in available:
+                mono.configure(family=family)
+                break
+        mono.configure(size=10)
+
+    def _setup_style(self):
+        """Ein Farbschema fuer alle ttk-Elemente. clam laesst sich als
+        einziges mitgeliefertes Thema durchgaengig umfaerben."""
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        style.configure(".", background=BG, foreground=TEXT,
+                        fieldbackground=SURFACE, bordercolor=BORDER,
+                        focuscolor=ACCENT)
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=TEXT)
+        style.configure("Card.TFrame", background=SURFACE)
+        style.configure("Card.TLabel", background=SURFACE)
+        style.configure("Title.TLabel", background=SURFACE, foreground=TEXT,
+                        font=("TkDefaultFont", 17, "bold"))
+        style.configure("Muted.TLabel", background=SURFACE, foreground=MUTED)
+        style.configure("Section.TLabel", background=SURFACE, foreground=MUTED,
+                        font=("TkDefaultFont", 9, "bold"))
+        style.configure("Foot.TLabel", background=BG, foreground=MUTED,
+                        font=("TkFixedFont", 10))
+        style.configure("Tcp.TLabel", background=SURFACE, foreground=OK_GREEN,
+                        font=("TkFixedFont", 9))
+
+        style.configure("TButton", background=BUTTON, foreground=TEXT,
+                        bordercolor=BORDER, lightcolor=BUTTON, darkcolor=BUTTON,
+                        relief="flat", padding=(12, 7), focusthickness=0)
+        style.map("TButton",
+                  background=[("pressed", BUTTON_DOWN), ("active", BUTTON_HOVER),
+                              ("disabled", BG)],
+                  foreground=[("disabled", DISABLED)])
+
+        style.configure("Mini.TButton", background=SURFACE, foreground=MUTED,
+                        bordercolor=BORDER, lightcolor=SURFACE, darkcolor=SURFACE,
+                        relief="flat", padding=(8, 2), focusthickness=0,
+                        font=("TkDefaultFont", 9))
+        style.map("Mini.TButton",
+                  background=[("pressed", BUTTON_DOWN), ("active", BUTTON)],
+                  foreground=[("active", TEXT)])
+
+        style.configure("TCheckbutton", background=SURFACE, foreground=TEXT,
+                        indicatorcolor=SURFACE, focuscolor=SURFACE)
+        style.map("TCheckbutton", background=[("active", SURFACE)],
+                  indicatorcolor=[("selected", ACCENT)])
+
+        style.configure("TCombobox", fieldbackground=SURFACE, background=BUTTON,
+                        arrowcolor=TEXT, bordercolor=BORDER, padding=4)
+
+        style.configure("TNotebook", background=BG, borderwidth=0, tabmargins=(0, 0, 0, 0))
+        style.configure("TNotebook.Tab", background=BG, foreground=MUTED,
+                        bordercolor=BORDER, padding=(16, 8), font=("TkDefaultFont", 10))
+        style.map("TNotebook.Tab",
+                  background=[("selected", SURFACE)],
+                  foreground=[("selected", TEXT)],
+                  expand=[("selected", (0, 0, 0, 0))])
+
+        style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
+                        foreground=TEXT, rowheight=26, borderwidth=0, relief="flat")
+        self.tree_indent = 20                          # Vorgabe aelterer Tk-Fassungen
+        try:
+            # Eine serielle Kette staffelt sich sonst quer aus der Spalte.
+            style.configure("Treeview", indent=TREE_INDENT)   # erst ab Tk 8.6.11
+            self.tree_indent = TREE_INDENT
+        except tk.TclError:
+            pass
+        style.configure("Treeview.Heading", background=HEADING, foreground=MUTED,
+                        relief="flat", padding=(6, 7),
+                        font=("TkDefaultFont", 9, "bold"))
+        style.map("Treeview.Heading", background=[("active", BUTTON_HOVER)])
+        style.map("Treeview", background=[("selected", SELECT)],
+                  foreground=[("selected", TEXT)])
+
+        for orient in ("Vertical", "Horizontal"):
+            style.configure(f"{orient}.TScrollbar", background=SCROLL,
+                            troughcolor=SURFACE, bordercolor=SURFACE,
+                            lightcolor=SCROLL, darkcolor=SCROLL,
+                            arrowcolor=MUTED, borderwidth=0)
+            style.map(f"{orient}.TScrollbar", background=[("active", MUTED)])
+
+        style.configure("Joint.Horizontal.TScale", background=SURFACE,
+                        troughcolor=TROUGH, bordercolor=BORDER,
+                        lightcolor=ACCENT, darkcolor=ACCENT, borderwidth=0)
+        style.map("Joint.Horizontal.TScale",
+                  background=[("disabled", SURFACE)],
+                  troughcolor=[("disabled", DISABLED_BG)],
+                  lightcolor=[("disabled", DISABLED)],
+                  darkcolor=[("disabled", DISABLED)])
+
+        style.configure("TSeparator", background=BORDER)
+
+    # -- kleine Bausteine --------------------------------------------------
+
+    def _card(self, parent, **grid):
+        """Weisse Flaeche mit duennem Rand. Traegt alle Inhaltsbereiche."""
+        frame = tk.Frame(parent, background=SURFACE, bd=0,
+                         highlightthickness=1, highlightbackground=BORDER,
+                         highlightcolor=BORDER)
+        if grid:
+            frame.grid(**grid)
+        return frame
+
+    def _entry(self, parent, width=10, value="", font=None):
+        """Eingabefeld mit Rand in der Themenfarbe und blauem Fokusrahmen."""
+        entry = tk.Entry(parent, width=width, justify="right",
+                         font=font or ("TkFixedFont", 10),
+                         background=SURFACE, foreground=TEXT,
+                         disabledbackground=BG, disabledforeground=DISABLED,
+                         insertbackground=TEXT, relief="flat",
+                         highlightthickness=1, highlightbackground=BORDER,
+                         highlightcolor=ACCENT)
+        if value:
+            entry.insert(0, value)
+        return entry
+
+    def _flat_button(self, parent, text, command, colour, hover, width=9,
+                     height=1, size=11):
+        button = tk.Button(parent, text=text, command=command,
+                           background=colour, foreground="white",
+                           activebackground=hover, activeforeground="white",
+                           font=("TkDefaultFont", size, "bold"),
+                           width=width, height=height, relief="flat",
+                           bd=0, highlightthickness=0, cursor="hand2")
+        button.bind("<Enter>", lambda _e: button.configure(
+            background=button.hover_colour))
+        button.bind("<Leave>", lambda _e: button.configure(
+            background=button.base_colour))
+        button.base_colour, button.hover_colour = colour, hover
+        return button
+
+    # ----------------------------------------------------------------------
+    # Aufbau
+    # ----------------------------------------------------------------------
+
+    def _build_ui(self):
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+        self._build_head()
+        self._build_body()
+        self._build_foot()
+
+    def _build_head(self):
+        """STOP, Robotername, Meldungsfenster und die Dateitasten."""
+        outer = ttk.Frame(self, padding=(PAD, PAD, PAD, 0))
+        outer.grid(row=0, column=0, sticky="ew")
+        outer.columnconfigure(0, weight=1)
+
+        card = self._card(outer, row=0, column=0, sticky="ew")
+        card.columnconfigure(1, weight=1)
+        inner = ttk.Frame(card, style="Card.TFrame", padding=(14, 12))
+        inner.grid(row=0, column=0, sticky="nsew")
+        card.columnconfigure(0, weight=1)
+        inner.columnconfigure(1, weight=1)
+
+        self.stop_button = self._flat_button(
+            inner, "STOP", self._toggle_stop, COLOR_STOP, COLOR_STOP_HOVER,
+            width=8, height=4, size=14)
+        self.stop_button.grid(row=0, column=0, rowspan=2, sticky="ns", padx=(0, 16))
+
+        title = ttk.Frame(inner, style="Card.TFrame")
+        title.grid(row=0, column=1, sticky="ew")
+        ttk.Label(title, textvariable=self.robot_var, style="Title.TLabel").pack(
+            side="left")
+        ttk.Label(title, textvariable=self.info_var, style="Muted.TLabel").pack(
+            side="left", padx=(16, 0), pady=(6, 0))
+
+        log = tk.Frame(inner, background=LOG_BG, bd=0, highlightthickness=1,
+                       highlightbackground=BORDER)
+        log.grid(row=1, column=1, sticky="nsew", pady=(10, 0))
+        log.columnconfigure(0, weight=1)
+        self.messages = tk.Text(log, height=7, wrap="none", state="disabled",
+                                background=LOG_BG, foreground=TEXT,
+                                relief="flat", highlightthickness=0,
+                                padx=10, pady=8, font=("TkFixedFont", 10),
+                                spacing1=1, spacing3=1)
+        self.messages.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(log, orient="vertical", command=self.messages.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.messages.configure(yscrollcommand=scroll.set)
+        self.messages.tag_configure("time", foreground=FAINT)
+        for tag, colour in (("info", TEXT), ("ok", OK_GREEN),
+                            ("warn", WARN), ("error", COLOR_STOP)):
+            self.messages.tag_configure(tag, foreground=colour)
+
+        tools = ttk.Frame(inner, style="Card.TFrame")
+        tools.grid(row=0, column=2, rowspan=2, sticky="ne", padx=(16, 0))
+        ttk.Button(tools, text="Laden...", command=self._choose,
+                   width=14).pack(fill="x")
+        ttk.Button(tools, text="Bearbeiten...", command=self._open_editor,
+                   width=14).pack(fill="x", pady=(6, 0))
+        self.save_button = ttk.Button(tools, text="Speichern", command=self._save,
+                                      width=14, state="disabled")
+        self.save_button.pack(fill="x", pady=(6, 0))
+        ttk.Button(tools, text="Speichern unter...", command=self._save_as,
+                   width=14).pack(fill="x", pady=(6, 0))
+        ttk.Checkbutton(tools, text="TF senden", variable=self.send_tf,
+                        command=self._toggle_tf).pack(anchor="w", pady=(10, 0))
+
+    def _build_body(self):
+        """Gelenke links, Frames in der Mitte, Sollwerte rechts."""
+        body = ttk.Frame(self, padding=(PAD, PAD, PAD, 0))
+        body.grid(row=1, column=0, sticky="nsew")
+        body.rowconfigure(0, weight=1)
+        body.columnconfigure(0, weight=1, minsize=420)
+        body.columnconfigure(1, weight=2, minsize=430)   # Baum braucht Breite
+        self.body = body
+
+        left = ttk.Notebook(body)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, PAD))
+        self.joint_table = self._make_table(left, JOINT_COLUMNS)
+        self.link_table = self._make_table(left, LINK_COLUMNS)
+        left.add(self.joint_table.master, text="Gelenke")
+        left.add(self.link_table.master, text="Links")
+
+        middle = self._card(body, row=0, column=1, sticky="nsew", padx=(0, PAD))
+        middle.rowconfigure(1, weight=1)
+        middle.columnconfigure(0, weight=1)
+        self.frames_card = middle
+        header = ttk.Frame(middle, style="Card.TFrame", padding=(12, 8, 10, 6))
+        header.grid(row=0, column=0, sticky="ew")
+        ttk.Label(header, text="FRAMES", style="Section.TLabel").pack(side="left")
+        ttk.Button(header, text="Ausblenden", style="Mini.TButton",
+                   command=self._toggle_frames).pack(side="right")
+        ttk.Separator(header, orient="vertical").pack(
+            side="right", fill="y", padx=8, pady=2)
+        ttk.Button(header, text="Einklappen", style="Mini.TButton",
+                   command=lambda: self._frames_open(False)).pack(side="right")
+        ttk.Button(header, text="Aufklappen", style="Mini.TButton",
+                   command=lambda: self._frames_open(True)).pack(
+            side="right", padx=(0, 6))
+
+        self.frame_table = self._make_table(middle, FRAME_COLUMNS, padding=(1, 0),
+                                            tree=FRAME_TREE)
+        self.frame_table.master.grid(row=1, column=0, sticky="nsew")
+        self.frame_table.tag_configure("tcp", background=TINT_OK)
+        self.frame_table.tag_configure("orphan", background=TINT_BAD)
+        self.frame_table.tag_configure("stripe", background=STRIPE)
+
+        # Schmaler Streifen, der die Karte zurueckholt. Liegt in derselben
+        # Spalte und wird nur im ausgeblendeten Zustand eingeblendet.
+        self.frames_strip = self._card(body)
+        self.frames_strip.columnconfigure(0, weight=1)
+        strip_button = tk.Button(
+            self.frames_strip, text="\n".join("FRAMES"), command=self._toggle_frames,
+            background=SURFACE, foreground=MUTED, activebackground=BUTTON,
+            activeforeground=TEXT, font=("TkDefaultFont", 9, "bold"),
+            relief="flat", bd=0, highlightthickness=0, cursor="hand2",
+            padx=4, pady=10)
+        strip_button.grid(row=0, column=0, sticky="new")
+
+        # Die TCP-Lage steht bewusst ausserhalb der Karte: sie soll auch dann
+        # sichtbar bleiben, wenn die Frames weggeklappt sind.
+        tcp = self._card(body, row=1, column=0, columnspan=2, sticky="ew",
+                         pady=(PAD, 0))
+        tcp_inner = ttk.Frame(tcp, style="Card.TFrame", padding=(12, 7))
+        tcp_inner.pack(fill="x")
+        ttk.Label(tcp_inner, textvariable=self.tcp_var, style="Tcp.TLabel").pack(
+            side="left")
+
+        right = ttk.Frame(body, width=370)
+        right.grid(row=0, column=2, rowspan=2, sticky="ns")
+        right.grid_propagate(False)
+        right.rowconfigure(0, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        self.target_book = ttk.Notebook(right)
+        self.target_book.grid(row=0, column=0, sticky="nsew")
+        self.cart_tab = tk.Frame(self.target_book, background=SURFACE,
+                                 padx=16, pady=14)
+        self.joint_tab = tk.Frame(self.target_book, background=SURFACE,
+                                  padx=16, pady=14)
+        self.target_book.add(self.cart_tab, text="Kartesisch")
+        self.target_book.add(self.joint_tab, text="Joint")
+        self.target_book.select(self.joint_tab)
+        self._build_cart_tab()
+
+        motion = self._card(right, row=1, column=0, sticky="ew", pady=(PAD, 0))
+        motion.columnconfigure(0, weight=1)
+        inner = ttk.Frame(motion, style="Card.TFrame", padding=(16, 12))
+        inner.grid(row=0, column=0, sticky="ew")
+        inner.columnconfigure(1, weight=1)
+        ttk.Label(inner, text="BEWEGUNG", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        for row, (key, label, unit, default) in enumerate(MOTION_FIELDS, start=1):
+            ttk.Label(inner, text=label, style="Card.TLabel").grid(
+                row=row, column=0, sticky="w", pady=3)
+            entry = self._entry(inner, width=9, value=f"{default:g}")
+            entry.grid(row=row, column=1, sticky="e", padx=(10, 8), pady=3)
+            ttk.Label(inner, text=unit, style="Muted.TLabel", width=5).grid(
+                row=row, column=2, sticky="w")
+            self.motion_entries[key] = entry
+        ttk.Button(inner, text="Uebernehmen", command=self._apply_motion).grid(
+            row=len(MOTION_FIELDS) + 1, column=0, columnspan=3, sticky="w",
+            pady=(10, 0))
+
+    def _build_cart_tab(self):
+        """Zielvorgabe im Basiskoordinatensystem."""
+        tab = self.cart_tab
+        tab.columnconfigure(1, weight=1)
+
+        ttk.Label(tab, text="ZIEL IM BASISSYSTEM", style="Section.TLabel").grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+
+        for row, (key, label, unit) in enumerate(CART_FIELDS, start=1):
+            pad = (10, 3) if key == "roll" else (0, 3)
+            ttk.Label(tab, text=label, style="Card.TLabel").grid(
+                row=row, column=0, sticky="w", pady=pad)
+            entry = self._entry(tab, width=12, value="0.000")
+            entry.grid(row=row, column=1, sticky="e", padx=(10, 8), pady=pad)
+            ttk.Label(tab, text=unit, style="Muted.TLabel", width=4).grid(
+                row=row, column=2, sticky="w", pady=pad)
+            self.cart_entries[key] = entry
+
+        buttons = tk.Frame(tab, background=SURFACE)
+        buttons.grid(row=len(CART_FIELDS) + 1, column=0, columnspan=3,
+                     sticky="w", pady=(16, 0))
+        go = self._flat_button(buttons, "Go", self._cart_go, COLOR_GO,
+                               COLOR_GO_HOVER)
+        go.pack(side="left")
+        self.go_buttons.append(go)
+        ttk.Button(buttons, text="TCP uebernehmen",
+                   command=self._cart_from_tcp).pack(side="left", padx=(8, 0))
+
+        note = tk.Label(tab, background=TINT_WARN, foreground=WARN, justify="left",
+                        text="Rueckwaertskinematik ist noch nicht hinterlegt. "
+                             "Go prueft die Eingabe und meldet das Ziel.",
+                        wraplength=290, padx=10, pady=8, anchor="w")
+        note.grid(row=len(CART_FIELDS) + 2, column=0, columnspan=3,
+                  sticky="ew", pady=(16, 0))
+
+    def _build_joint_inputs(self):
+        """Eingabefelder passend zur geladenen URDF neu aufbauen."""
+        for child in self.joint_tab.winfo_children():
+            child.destroy()
+        self.entries.clear()
+        self.sliders.clear()
+        # Die Go-Taste dieses Tabs wurde eben mit zerstoert, aus der Liste werfen.
+        self.go_buttons = [b for b in self.go_buttons if b.winfo_exists()]
+
+        movable = [j for j in self.joints if j["type"] != "fixed"]
+        if not movable:
+            ttk.Label(self.joint_tab, text="keine beweglichen Gelenke",
+                      style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+            return
+
+        # Bei vielen Achsen laeuft die Liste sonst unten aus dem Fenster und
+        # die Go-Taste waere nicht mehr erreichbar. Liste scrollt, Tasten nicht.
+        self.joint_tab.columnconfigure(0, weight=1)
+        self.joint_tab.rowconfigure(1, weight=1)
+        ttk.Label(self.joint_tab, text="ACHSWERTE", style="Section.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 10))
+
+        area = tk.Frame(self.joint_tab, background=SURFACE)
+        area.grid(row=1, column=0, sticky="nsew")
+        area.rowconfigure(0, weight=1)
+        area.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(area, background=SURFACE, highlightthickness=0, bd=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        bar = ttk.Scrollbar(area, orient="vertical", command=canvas.yview)
+        bar.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=bar.set)
+
+        rows = tk.Frame(canvas, background=SURFACE)
+        window = canvas.create_window((0, 0), window=rows, anchor="nw")
+
+        def resized(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(window, width=canvas.winfo_width())
+            needed = rows.winfo_reqheight()
+            if needed > canvas.winfo_height() + 2:
+                bar.grid()
+            else:
+                bar.grid_remove()
+        rows.bind("<Configure>", resized)
+        canvas.bind("<Configure>", resized)
+
+        def wheel(event):
+            step = -1 if getattr(event, "num", 0) == 4 or event.delta > 0 else 1
+            canvas.yview_scroll(step, "units")
+        for widget in (canvas, rows):
+            widget.bind("<MouseWheel>", wheel)         # Windows und macOS
+            widget.bind("<Button-4>", wheel)           # X11
+            widget.bind("<Button-5>", wheel)
+
+        rows.columnconfigure(1, weight=1)
+
+        for index, joint in enumerate(movable):
+            name = joint["name"]
+            row = 2 * index                            # Zeile Wert, darunter Schieber
+
+            ttk.Label(rows, text=name, style="Card.TLabel").grid(
+                row=row, column=0, sticky="w")
+
+            low, high = slider_range(joint)
+            step = slider_step(joint)
+            digits = value_digits(step)
+
+            entry = self._entry(rows, width=10, value=f"{0.0:.{digits}f}")
+            entry.grid(row=row, column=1, sticky="e", padx=(10, 8))
+            entry.bind("<Return>", lambda _event: self._apply())
+            entry.bind("<FocusOut>", lambda _event: self._apply())
+            self.entries[name] = entry
+
+            ttk.Label(rows, text="deg" if is_rotational(joint) else "m",
+                      style="Muted.TLabel", width=4).grid(
+                row=row, column=2, sticky="w")
+
+            places = limit_digits(joint)
+            ttk.Label(rows, text=f"{low:.{places}f} .. {high:.{places}f}",
+                      style="Muted.TLabel").grid(row=row, column=3, sticky="e",
+                                                 padx=(8, 0))
+
+            slider = ttk.Scale(rows, from_=low, to=high,
+                               orient="horizontal", style="Joint.Horizontal.TScale",
+                               command=lambda value, n=name: self._on_slider(n, value))
+            slider.grid(row=row + 1, column=0, columnspan=4, sticky="ew",
+                        pady=(2, 10), padx=(0, 4))
+            # Erst beim Loslassen ins Protokoll, sonst laeuft es beim Ziehen voll.
+            slider.bind("<ButtonRelease-1>", lambda _e: self._slider_done())
+            # Pfeiltasten gehen um genau eine Stufe. Bewusst kein Mausrad:
+            # beim Rollen durch die Achsliste wuerde sonst ungewollt ein
+            # Sollwert verstellt.
+            for key, direction in (("<Left>", -1), ("<Down>", -1),
+                                   ("<Right>", 1), ("<Up>", 1)):
+                slider.bind(key, lambda _e, n=name, d=direction: self._nudge(n, d))
+            self.sliders[name] = slider
+
+        buttons = tk.Frame(self.joint_tab, background=SURFACE)
+        buttons.grid(row=2, column=0, sticky="w", pady=(10, 0))
+        go = self._flat_button(buttons, "Go", self._apply, COLOR_GO, COLOR_GO_HOVER)
+        go.pack(side="left")
+        self.go_buttons.append(go)
+        ttk.Button(buttons, text="Nullstellung", command=self._reset).pack(
+            side="left", padx=(8, 0))
+        self._sync_sliders()                           # sonst stehen sie am Anschlag
+        self._update_stop_state()
+
+    def _build_foot(self):
+        foot = ttk.Frame(self, padding=(PAD + 4, 8))
+        foot.grid(row=2, column=0, sticky="ew")
+        foot.columnconfigure(1, weight=1)
+        ttk.Label(foot, textvariable=self.session_var, style="Foot.TLabel").grid(
+            row=0, column=0, sticky="w")
+        ttk.Label(foot, textvariable=self.path_var, style="Foot.TLabel").grid(
+            row=0, column=1)
+        ttk.Label(foot, textvariable=self.refresh_var, style="Foot.TLabel").grid(
+            row=0, column=2, sticky="e")
+
+    def _make_table(self, parent, columns, padding=(0, 0), tree=None):
+        """Treeview mit Karte drumherum. Der waagerechte Balken erscheint nur,
+        wenn die Spalten wirklich breiter sind als das Fenster.
+
+        Mit `tree` als (Ueberschrift, Breite) bekommt die Tabelle die Spalte #0
+        und damit Einrueckung samt Klapppfeilen.
+        """
+        frame = tk.Frame(parent, background=SURFACE, bd=0,
+                         highlightthickness=0)
+        keys = [c[0] for c in columns]
+        table = ttk.Treeview(frame, columns=keys, selectmode="browse",
+                             show="tree headings" if tree else "headings")
+        if tree:
+            table.heading("#0", text=tree[0], anchor="w")
+            table.column("#0", width=tree[1], minwidth=110, stretch=False)
+        for key, heading, width, anchor in columns:
+            table.heading(key, text=heading, anchor=anchor)
+            table.column(key, width=width, minwidth=60, anchor=anchor,
+                         stretch=(key == keys[-1]))
+
+        yscroll = ttk.Scrollbar(frame, orient="vertical", command=table.yview)
+        xscroll = ttk.Scrollbar(frame, orient="horizontal", command=table.xview)
+        table.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+
+        table.grid(row=0, column=0, sticky="nsew", padx=padding[0], pady=padding[1])
+        yscroll.grid(row=0, column=1, sticky="ns")
+        xscroll.grid(row=1, column=0, sticky="ew")
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        def fit(_event=None):
+            needed = sum(table.column(k, "width") for k in keys)
+            if tree:
+                needed += table.column("#0", "width")
+            if needed > table.winfo_width() + 4:
+                xscroll.grid()
+            else:
+                xscroll.grid_remove()
+            if table.yview() == (0.0, 1.0):
+                yscroll.grid_remove()
+            else:
+                yscroll.grid()
+        table.bind("<Configure>", fit)
+        table.fit = fit
+        table.tag_configure("stripe", background=STRIPE)
+        return table
+
+    def _insert_row(self, table, index, values, tags=()):
+        """Jede zweite Zeile leicht getoent, aber nur ohne eigene Farbe."""
+        if not tags:
+            tags = ("stripe",) if index % 2 else ()
+        table.insert("", "end", tags=tags, values=values)
+
+    # ----------------------------------------------------------------------
+    # Meldungsfenster
+    # ----------------------------------------------------------------------
+
+    def _log(self, text, level="info"):
+        """Zeile ins Meldungsfenster schreiben. Ersetzt die alte Statuszeile."""
+        self.messages.configure(state="normal")
+        self.messages.insert("end", f"{datetime.now():%H:%M:%S}  ", "time")
+        self.messages.insert("end", f"{text}\n", level)
+        self.messages.see("end")
+        self.messages.configure(state="disabled")
+
+    # ----------------------------------------------------------------------
+    # STOP
+    # ----------------------------------------------------------------------
+
+    def _toggle_stop(self):
+        """STOP sperrt die Sollwertvorgabe. TF laeuft weiter, das Bild bleibt stehen."""
+        self.stopped = not self.stopped
+        if self.stopped:
+            colour, hover, text = COLOR_GO, COLOR_GO_HOVER, "FREI"
+            self._log("STOP ausgeloest, Sollwerte werden nicht mehr uebernommen",
+                      "error")
+        else:
+            colour, hover, text = COLOR_STOP, COLOR_STOP_HOVER, "STOP"
+            self._log("STOP aufgehoben", "ok")
+        self.stop_button.base_colour, self.stop_button.hover_colour = colour, hover
+        self.stop_button.configure(text=text, background=colour,
+                                   activebackground=hover)
+        self._update_stop_state()
+
+    def _update_stop_state(self):
+        state = "disabled" if self.stopped else "normal"
+        for entry in self.entries.values():
+            entry.configure(state=state)
+        for entry in self.cart_entries.values():
+            entry.configure(state=state)
+        for slider in self.sliders.values():
+            slider.configure(state=state)
+        for button in self.go_buttons:
+            if button.winfo_exists():
+                button.configure(state=state,
+                                 background=DISABLED_BG if self.stopped
+                                 else button.base_colour)
+
+    # ----------------------------------------------------------------------
+    # Daten laden und speichern
+    # ----------------------------------------------------------------------
+
+    def _choose(self):
+        path = filedialog.askopenfilename(
+            title="URDF waehlen",
+            initialdir=os.path.dirname(self.urdf_path) or ".",
+            filetypes=[("URDF", "*.urdf *.xml"), ("Alle Dateien", "*.*")])
+        if path:
+            self._load(path)
+
+    def _load(self, path, initial=False):
+        try:
+            root, name, links, joints, xml_text = parse(path)
+        except FileNotFoundError:
+            messagebox.showerror("URDF", f"Datei nicht gefunden:\n{path}")
+            self._log(f"Datei nicht gefunden: {path}", "error")
+            if initial:
+                self._choose()
+            return
+        except ET.ParseError as exc:
+            messagebox.showerror("URDF", f"XML fehlerhaft:\n{exc}")
+            self._log(f"XML fehlerhaft: {exc}", "error")
+            return
+
+        self.urdf_path = path
+        self.xml_root = root
+        self.robot_name, self.links, self.joints, self.urdf_xml = name, links, joints, xml_text
+        self.path_var.set(os.path.basename(path))
+        self.positions = {j["name"]: 0.0 for j in joints if j["type"] != "fixed"}
+        self.history.clear()
+        self._update_undo()
+        self.saved_signature = serialize(root)
+        self._set_dirty(False)
+
+        self._update_header()
+        self._build_joint_inputs()
+        self._fill_link_table()
+        self._update_kinematics()
+        self.tree_selected = None                      # Auswahl gehoert zum alten Modell
+        self._draw_tree()
+        if self.editor is not None:
+            self._edit_fill_combo()
+
+        self._log(f"Roboter {name} initialisiert, {len(links)} Links, "
+                  f"{len(joints)} Gelenke", "ok")
+
+        problems = validate_root(root)
+        if problems:
+            for problem in problems:
+                self._log(problem, "warn")
+            messagebox.showwarning("URDF", "Hinweise:\n\n" + "\n".join(problems))
+
+        message = self.ros.set_model(joints, xml_text)
+        if self.ros.running:                           # sonst steht der Hinweis
+            self._log(message, "ok")                   # vom Start schon da
+        self.ros.set_positions(self.positions)
+
+    def _save(self):
+        if not self.dirty:
+            return
+        try:
+            backup = save_urdf(self.urdf_path, self.urdf_xml)
+        except OSError as exc:
+            messagebox.showerror("Speichern", f"Schreiben fehlgeschlagen:\n{exc}")
+            self._log(f"Speichern fehlgeschlagen: {exc}", "error")
+            return
+        self.saved_signature = serialize(self.xml_root)
+        self._set_dirty(False)
+        self._log(f"Gespeichert. Sicherung: {backup}" if backup
+                  else "Gespeichert.", "ok")
+
+    def _save_as(self):
+        """Aktuellen Stand als neue Datei ablegen, Original bleibt unberuehrt.
+
+        Danach zeigt die GUI auf die neue Datei: weitere Aenderungen landen
+        dort und nicht mehr im Ausgangsmodell.
+        """
+        folder = backup_dir_for(self.urdf_path)
+        path = filedialog.asksaveasfilename(
+            title="URDF speichern unter",
+            initialdir=folder,
+            initialfile=timestamped_name(self.urdf_path),
+            defaultextension=".urdf",
+            filetypes=[("URDF", "*.urdf *.xml"), ("Alle Dateien", "*.*")])
+        if not path:
+            return
+
+        try:
+            save_urdf(path, self.urdf_xml)
+        except OSError as exc:
+            messagebox.showerror("Speichern", f"Schreiben fehlgeschlagen:\n{exc}")
+            self._log(f"Speichern fehlgeschlagen: {exc}", "error")
+            return
+
+        self.urdf_path = path                          # ab jetzt gilt diese Datei
+        self.path_var.set(os.path.basename(path))
+        self.saved_signature = serialize(self.xml_root)
+        self._set_dirty(False)
+        self._log(f"Gespeichert unter {path}", "ok")
+
+    def _discard(self):
+        if self.dirty and not messagebox.askyesno(
+                "Neu laden", "Nicht gespeicherte Aenderungen verwerfen?"):
+            return
+        self._load(self.urdf_path)
+
+    # ----------------------------------------------------------------------
+    # Verlauf
+    # ----------------------------------------------------------------------
+
+    def _push_history(self, description):
+        """Stand vor einer Aenderung sichern. Aeltestes faellt heraus."""
+        self.history.append((description, copy.deepcopy(self.xml_root)))
+        del self.history[:-MAX_HISTORY]
+        self._update_undo()
+
+    def _undo(self):
+        if not self.history:
+            return
+        description, root = self.history.pop()
+        self.xml_root = root
+        self._rebuild_from_root()
+        self._update_undo()
+        self._log(f"Rueckgaengig: {description}", "ok")
+
+    def _update_undo(self):
+        if self.undo_button is not None and self.undo_button.winfo_exists():
+            self.undo_button.configure(
+                state="normal" if self.history else "disabled")
+
+    def _commit(self, description, mutate):
+        """Aenderung auf einer Kopie ausfuehren, pruefen, dann uebernehmen.
+
+        Einziger Weg, auf dem der Baum veraendert wird. Schlaegt die Pruefung
+        fehl, bleibt das Modell unberuehrt und der Verlauf unveraendert.
+        """
+        if self.xml_root is None:
+            return False
+        draft = copy.deepcopy(self.xml_root)
+        try:
+            mutate(draft)
+        except ValueError as exc:
+            messagebox.showerror("URDF", str(exc))
+            self._log(str(exc), "error")
+            return False
+
+        problems = validate_root(draft)
+        if problems:
+            messagebox.showerror("URDF", "Nicht uebernommen:\n\n"
+                                 + "\n".join(problems))
+            for problem in problems:
+                self._log(problem, "error")
+            return False
+
+        self._push_history(description)
+        self.xml_root = draft
+        self._rebuild_from_root()
+        self._log(f"{description}, noch nicht gespeichert", "warn")
+        return True
+
+    def _set_dirty(self, dirty):
+        self.dirty = dirty
+        self.save_button.configure(state="normal" if dirty else "disabled")
+        self.title(f"URDF Viewer{'  *' if dirty else ''}")
+
+    def _update_header(self):
+        roots = root_links(self.links, self.joints)
+        movable = sum(1 for j in self.joints if j["type"] != "fixed")
+        self.robot_var.set(self.robot_name or "kein Modell")
+        self.info_var.set(
+            f"{len(self.links)} Links   |   {len(self.joints)} Gelenke, "
+            f"{movable} beweglich   |   Wurzel "
+            f"{roots[0] if len(roots) == 1 else roots}")
+
+    # ----------------------------------------------------------------------
+    # Tabellen
+    # ----------------------------------------------------------------------
+
+    def _fill_joint_table(self):
+        """Gelenke mit dem aktuellen Sollwert in rad und grad."""
+        self.joint_table.delete(*self.joint_table.get_children())
+        for index, joint in enumerate(self.joints):
+            value = self.positions.get(joint["name"], 0.0)
+            if joint["type"] == "fixed":
+                primary = secondary = "-"
+            elif is_rotational(joint):
+                primary = f"{value:.4f}"
+                secondary = f"{math.degrees(value):.2f}"
+            else:
+                # Bei feinem Hub reichen vier Stellen in Meter nicht aus, die
+                # Tabelle waere dann groeber als das Raster des Schiebers.
+                digits = value_digits(slider_step(joint))
+                primary = f"{value:.{max(4, digits)}f}"
+                secondary = f"{value * 1000.0:.{max(1, digits - 3)}f}"
+
+            if joint["has_limit"]:
+                lo, up = joint["lower"], joint["upper"]
+                places = limit_digits(joint)
+                if is_rotational(joint):
+                    lo, up = math.degrees(lo), math.degrees(up)
+                limit = f"{lo:.{places}f} .. {up:.{places}f}"
+            elif joint["type"] == "continuous":
+                limit = "unbegrenzt"
+            else:
+                limit = "-"
+
+            self._insert_row(self.joint_table, index, (
+                joint["name"], joint["type"], primary, secondary, limit,
+                f"{joint['parent']} > {joint['child']}"))
+        self.after_idle(self.joint_table.fit)
+
+    def _fill_link_table(self):
+        self.link_table.delete(*self.link_table.get_children())
+        for index, link in enumerate(self.links):
+            if link["has_inertial"]:
+                mass, com = f"{link['mass']:.4f}", fmt(link["com"])
+            else:
+                mass = com = "-"
+            self._insert_row(self.link_table, index, (link["name"], mass, com))
+        self.after_idle(self.link_table.fit)
+
+    # ----------------------------------------------------------------------
+    # Sollwerte
+    # ----------------------------------------------------------------------
+
+    def _apply(self):
+        """Eingaben lesen, pruefen, begrenzen und uebernehmen."""
+        if self.stopped:
+            return
+        invalid = 0
+        clamped = 0
+        for joint in self.joints:
+            entry = self.entries.get(joint["name"])
+            if entry is None:
+                continue
+
+            try:
+                typed = float(entry.get().replace(",", "."))
+            except ValueError:
+                entry.configure(background=BG_INVALID)
+                invalid += 1
+                continue
+
+            value = math.radians(typed) if is_rotational(joint) else typed
+            if joint["has_limit"]:
+                limited = min(max(value, joint["lower"]), joint["upper"])
+            else:
+                limited = value
+
+            if abs(limited - value) > 1e-12:
+                clamped += 1
+                entry.configure(background=BG_CLAMPED)
+                shown = math.degrees(limited) if is_rotational(joint) else limited
+                entry.delete(0, "end")
+                entry.insert(0, f"{shown:.{value_digits(slider_step(joint))}f}")
+            else:
+                entry.configure(background=BG_OK)
+
+            self.positions[joint["name"]] = limited
+
+        self._sync_sliders()
+        self._update_kinematics()
+        self.ros.set_positions(self.positions)
+
+        if invalid:
+            self._log(f"{invalid} Eingabe(n) nicht lesbar, Wert unveraendert", "error")
+        elif clamped:
+            self._log(f"{clamped} Wert(e) auf das URDF-Limit begrenzt", "warn")
+        else:
+            self._log("Moved to  " + self._pose_text())
+
+    def _joint_by_name(self, name):
+        for joint in self.joints:
+            if joint["name"] == name:
+                return joint
+        return None
+
+    def _on_slider(self, name, value):
+        """Laeuft bei jedem Pixel Zugweg. Muss deshalb billig bleiben."""
+        if self.syncing or self.stopped:
+            return
+        joint = self._joint_by_name(name)
+        if joint is None:
+            return
+
+        low, high = slider_range(joint)
+        step = slider_step(joint)
+        # Auf das Raster legen. Der Griff selbst bleibt beim Ziehen frei, sonst
+        # zappelt er gegen die Maus; er springt beim Loslassen auf die Stufe.
+        shown = snap(float(value), low, high, step)
+
+        entry = self.entries[name]
+        entry.configure(background=BG_OK)
+        entry.delete(0, "end")
+        entry.insert(0, f"{shown:.{value_digits(step)}f}")
+
+        self.positions[name] = (math.radians(shown) if is_rotational(joint)
+                                else shown)
+        self.ros.set_positions(self.positions)         # TF sofort, ohne Umweg
+        self._schedule_refresh()
+
+    def _nudge(self, name, direction):
+        """Eine Stufe weiter. Haengt an den Pfeiltasten des Schiebers."""
+        if self.stopped:
+            return "break"
+        joint = self._joint_by_name(name)
+        slider = self.sliders.get(name)
+        if joint is None or slider is None:
+            return "break"
+        low, high = slider_range(joint)
+        step = slider_step(joint)
+        shown = snap(slider.get() + direction * step, low, high, step)
+        self.syncing = True
+        try:
+            slider.set(shown)
+        finally:
+            self.syncing = False
+        self._on_slider(name, shown)
+        self._slider_done()
+        return "break"                                 # Tk-Vorgabe ausschalten
+
+    def _schedule_refresh(self):
+        """Tabellen hoechstens alle SLIDER_REFRESH_MS neu rechnen."""
+        if self.refresh_job is None:
+            self.refresh_job = self.after(SLIDER_REFRESH_MS, self._refresh_now)
+
+    def _refresh_now(self):
+        self.refresh_job = None
+        self._update_kinematics()
+
+    def _slider_done(self):
+        """Maustaste losgelassen: einmal sauber nachziehen und melden."""
+        if self.stopped:
+            return
+        if self.refresh_job is not None:
+            self.after_cancel(self.refresh_job)
+            self.refresh_job = None
+        self._sync_sliders()                           # Griff auf die Stufe
+        self._update_kinematics()
+        self._log("Moved to  " + self._pose_text())
+
+    def _sync_sliders(self):
+        """Schieber auf die aktuellen Sollwerte setzen, ohne sie auszuloesen."""
+        self.syncing = True
+        try:
+            for joint in self.joints:
+                slider = self.sliders.get(joint["name"])
+                if slider is None:
+                    continue
+                value = self.positions.get(joint["name"], 0.0)
+                shown = math.degrees(value) if is_rotational(joint) else value
+                low, high = slider_range(joint)
+                slider.set(snap(shown, low, high, slider_step(joint)))
+        finally:
+            self.syncing = False
+
+    def _reset(self):
+        for joint in self.joints:
+            entry = self.entries.get(joint["name"])
+            if entry is None:
+                continue
+            entry.configure(background=BG_OK)
+            entry.delete(0, "end")
+            entry.insert(0, f"{0.0:.{value_digits(slider_step(joint))}f}")
+        self._apply()
+
+    def _sync_joint_entries(self):
+        """Eingabefelder auf die aktuellen Sollwerte setzen."""
+        for joint in self.joints:
+            entry = self.entries.get(joint["name"])
+            if entry is None:
+                continue
+            value = self.positions.get(joint["name"], 0.0)
+            shown = math.degrees(value) if is_rotational(joint) else value
+            entry.delete(0, "end")
+            entry.insert(0, f"{shown:.{value_digits(slider_step(joint))}f}")
+        self._sync_sliders()
+
+    def _cart_from_tcp(self):
+        """Zielfelder mit der aktuellen TCP-Lage vorbelegen."""
+        pose = self._tcp_pose()
+        if pose is None:
+            self._log("Kein eindeutiger Endeffektor, nichts uebernommen", "warn")
+            return
+        xyz, rpy = pose
+        for key, value in zip(("x", "y", "z"), xyz):
+            self.cart_entries[key].delete(0, "end")
+            self.cart_entries[key].insert(0, f"{value:.4f}")
+        for key, value in zip(("roll", "pitch", "yaw"), rpy):
+            self.cart_entries[key].delete(0, "end")
+            self.cart_entries[key].insert(0, f"{math.degrees(value):.2f}")
+
+    def _cart_go(self):
+        """Kartesisches Ziel pruefen. Die Rueckwaertskinematik fehlt noch."""
+        if self.stopped:
+            return
+        target = {}
+        for key, label, _unit in CART_FIELDS:
+            entry = self.cart_entries[key]
+            try:
+                target[key] = float(entry.get().replace(",", "."))
+            except ValueError:
+                entry.configure(background=BG_INVALID)
+                self._log(f"{label} ist nicht lesbar", "error")
+                return
+            entry.configure(background=BG_OK)
+
+        self._log("Ziel kartesisch   X {x:.4f}  Y {y:.4f}  Z {z:.4f} m   "
+                  "R {roll:.2f}  P {pitch:.2f}  Y {yaw:.2f} deg".format(**target))
+        self._log("Rueckwaertskinematik nicht hinterlegt, keine Achswerte berechnet",
+                  "warn")
+
+    def _apply_motion(self):
+        """Jerk, Beschleunigung und Geschwindigkeit uebernehmen."""
+        values = {}
+        for key, label, unit, _default in MOTION_FIELDS:
+            entry = self.motion_entries[key]
+            try:
+                value = float(entry.get().replace(",", "."))
+            except ValueError:
+                entry.configure(background=BG_INVALID)
+                self._log(f"{label} ist nicht lesbar", "error")
+                return
+            if value <= 0.0:
+                entry.configure(background=BG_INVALID)
+                self._log(f"{label} muss groesser als null sein", "error")
+                return
+            entry.configure(background=BG_OK)
+            values[key] = value
+
+        self.motion = values
+        self._log("Bewegung: Jerk {jerk:g}, Acceleration {acceleration:g}, "
+                  "Speed {speed:g}".format(**values), "ok")
+
+    # ----------------------------------------------------------------------
+    # Kinematik
+    # ----------------------------------------------------------------------
+
+    def _tcp_pose(self):
+        """Lage des einzigen Endeffektors oder None."""
+        poses = forward_kinematics(self.links, self.joints, self.positions)
+        roots = root_links(self.links, self.joints)
+        base = roots[0] if roots else "?"
+        tcps = [n for n in leaf_links(self.links, self.joints) if n != base]
+        if len(tcps) != 1 or tcps[0] not in poses:
+            return None
+        return to_xyz_rpy(poses[tcps[0]])
+
+    def _pose_text(self, pad=True):
+        """TCP-Lage als Text. Mit pad stehen die Spalten im Protokoll untereinander."""
+        pose = self._tcp_pose()
+        if pose is None:
+            return "Achswerte uebernommen"
+        xyz, rpy = pose
+        width, digits = (8, 2) if pad else (0, 1)
+        return (f"X {xyz[0]:{width}.4f} Y {xyz[1]:{width}.4f} Z {xyz[2]:{width}.4f} m   "
+                f"R {math.degrees(rpy[0]):{width}.{digits}f} "
+                f"P {math.degrees(rpy[1]):{width}.{digits}f} "
+                f"Y {math.degrees(rpy[2]):{width}.{digits}f} deg")
+
+    def _frame_parents(self):
+        """{linkname: elternname}. Leer, wenn der Link keinen Vater hat."""
+        parents = {l["name"]: "" for l in self.links}
+        for joint in self.joints:
+            if joint["child"] in parents and joint["parent"]:
+                parents[joint["child"]] = joint["parent"]
+        return parents
+
+    def _sync_frame_tree(self):
+        """Baumgeruest nur neu bauen, wenn sich die Topologie geaendert hat.
+
+        Beim Ziehen am Schieber laeuft das hier bis zu 16 Mal in der Sekunde.
+        Wuerde jedes Mal geloescht und neu eingefuegt, klappten alle Zweige
+        wieder auf und die Auswahl ginge verloren.
+        """
+        parents = self._frame_parents()
+        if parents == self.frame_layout:
+            return
+
+        self.frame_table.delete(*self.frame_table.get_children())
+        self.frame_items = {}
+        depth = {}
+
+        # Eltern muessen vor ihren Kindern eingefuegt sein.
+        pending = [l["name"] for l in self.links]
+        while pending:
+            progressed = False
+            for name in list(pending):
+                parent = parents.get(name, "")
+                if parent and parent in pending:
+                    continue                           # Vater kommt noch
+                target = self.frame_items.get(parent, "") if parent else ""
+                depth[name] = depth.get(parent, -1) + 1 if target else 0
+                self.frame_items[name] = self.frame_table.insert(
+                    target, "end", text=name, open=True)
+                pending.remove(name)
+                progressed = True
+            if not progressed:                         # Zyklus, Rest flach anhaengen
+                for name in pending:
+                    depth[name] = 0
+                    self.frame_items[name] = self.frame_table.insert(
+                        "", "end", text=name, open=True)
+                break
+
+        self._fit_tree_column(depth)
+        self.frame_layout = parents
+
+    def _fit_tree_column(self, depth):
+        """Baumspalte so breit, dass auch der tiefste Name lesbar bleibt.
+
+        Eine lange serielle Kette rueckt weit ein; mit fester Breite waeren
+        die letzten Glieder nur noch als Stummel zu sehen.
+        """
+        font = tkfont.nametofont("TkDefaultFont")
+        needed = max((28 + level * self.tree_indent + font.measure(name)
+                      for name, level in depth.items()), default=0) + 14
+        self.frame_table.column(
+            "#0", width=max(FRAME_TREE[1], min(needed, TREE_MAX_WIDTH)))
+
+    def _toggle_frames(self):
+        """Frames-Karte weg- oder wieder einblenden.
+
+        Die Spalte behaelt einen schmalen Streifen zum Zurueckholen. Ihr
+        Gewicht faellt auf null, damit der frei werdende Platz an die
+        Gelenkliste geht und nicht als Luecke stehen bleibt.
+        """
+        self.frames_shown = not self.frames_shown
+        if self.frames_shown:
+            self.frames_strip.grid_remove()
+            self.body.columnconfigure(1, weight=2, minsize=430)
+            self.frames_card.grid()
+            self.after_idle(self.frame_table.fit)
+        else:
+            self.frames_card.grid_remove()
+            self.body.columnconfigure(1, weight=0, minsize=0)
+            self.frames_strip.grid(row=0, column=1, sticky="ns", padx=(0, PAD))
+
+    def _frames_open(self, opened):
+        """Alle Zweige auf- oder zuklappen."""
+        for item in self.frame_items.values():
+            self.frame_table.item(item, open=opened)
+
+    def _update_kinematics(self):
+        """FK fuer alle Frames neu rechnen und die Tabellen fuellen."""
+        poses = forward_kinematics(self.links, self.joints, self.positions)
+        leaves = set(leaf_links(self.links, self.joints))
+        roots = root_links(self.links, self.joints)
+        base = roots[0] if roots else "?"
+
+        self._sync_frame_tree()
+        for link in self.links:
+            name = link["name"]
+            item = self.frame_items.get(name)
+            if item is None:
+                continue
+            matrix = poses.get(name)
+            if matrix is None:                         # nicht mit der Basis verbunden
+                self.frame_table.item(item, values=["-"] * 6, tags=("orphan",))
+                continue
+
+            xyz, rpy = to_xyz_rpy(matrix)
+            tags = ("tcp",) if name in leaves and name != base else ()
+            self.frame_table.item(item, tags=tags, values=(
+                f"{xyz[0]:.4f}", f"{xyz[1]:.4f}", f"{xyz[2]:.4f}",
+                f"{math.degrees(rpy[0]):.2f}",
+                f"{math.degrees(rpy[1]):.2f}",
+                f"{math.degrees(rpy[2]):.2f}"))
+
+        self._fill_joint_table()
+        self.after_idle(self.frame_table.fit)
+
+        tcps = [n for n in leaves if n != base]
+        if len(tcps) == 1 and tcps[0] in poses:
+            self.tcp_var.set(f"TCP {tcps[0]}   {self._pose_text(pad=False)}")
+        elif tcps:
+            self.tcp_var.set(f"Mehrere Endeffektoren: {', '.join(sorted(tcps))}")
+        else:
+            self.tcp_var.set("Kein Endeffektor gefunden")
+
+    # ----------------------------------------------------------------------
+    # Bearbeiten in einem eigenen Fenster
+    # ----------------------------------------------------------------------
+
+    def _open_editor(self):
+        """Aenderbar sind Laengen, Winkel, Gelenktyp, Achse und Anschlaege.
+
+        parent/child bleiben gesperrt: sie legen die Topologie fest. Der Typ
+        laesst sich umstellen; die Auswahl schaltet nur die Felder um,
+        geschrieben wird erst mit Uebernehmen.
+        """
+        if self.editor is not None and self.editor.winfo_exists():
+            self.editor.lift()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("URDF bearbeiten")
+        window.configure(background=BG)
+        window.transient(self)
+        # Der Baum braucht Platz und waechst mit dem Modell, deshalb hier
+        # anders als bisher veraenderbar.
+        window.resizable(True, True)
+        window.geometry("1200x800")
+        window.minsize(900, 620)
+        window.protocol("WM_DELETE_WINDOW", self._close_editor)
+        self.editor = window
+
+        window.rowconfigure(0, weight=1)
+        window.columnconfigure(0, weight=1)            # nur der Baum waechst
+
+        # Links die Struktur zum Anfassen, rechts die Zahlen zum Gelenk.
+        # Die Auswahl ist dieselbe: was im Baum markiert ist, steht rechts.
+        tree_card = self._card(window, row=0, column=0, sticky="nsew",
+                               padx=(PAD, 0), pady=PAD)
+        tree_card.rowconfigure(0, weight=1)
+        tree_card.columnconfigure(0, weight=1)
+        self._build_tree_panel(tree_card).grid(row=0, column=0, sticky="nsew")
+
+        card = self._card(window, row=0, column=1, sticky="ns", padx=PAD, pady=PAD)
+        tab = ttk.Frame(card, style="Card.TFrame", padding=(18, 16))
+        tab.pack(fill="both", expand=True)
+        self.edit_entries = {}
+
+        head = ttk.Frame(tab, style="Card.TFrame")
+        head.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 16))
+        ttk.Label(head, text="Gelenk", style="Card.TLabel").pack(side="left")
+        self.edit_combo = ttk.Combobox(head, textvariable=self.edit_joint_var,
+                                       state="readonly", width=24)
+        self.edit_combo.pack(side="left", padx=(10, 16))
+        self.edit_combo.bind("<<ComboboxSelected>>", lambda _e: self._edit_load_joint())
+
+        ttk.Label(head, text="Typ", style="Card.TLabel").pack(side="left")
+        self.edit_type_combo = ttk.Combobox(head, textvariable=self.edit_type_var,
+                                            state="readonly", width=12,
+                                            values=list(JOINT_TYPES))
+        self.edit_type_combo.pack(side="left", padx=(10, 16))
+        # Nur die Felder umschalten. Der Baum bleibt bis Uebernehmen unberuehrt.
+        self.edit_type_combo.bind("<<ComboboxSelected>>",
+                                  lambda _e: self._edit_type_changed())
+        ttk.Label(head, textvariable=self.edit_info_var, style="Muted.TLabel").pack(
+            side="left")
+
+        def field_row(row, title, specs):
+            ttk.Label(tab, text=title, style="Section.TLabel").grid(
+                row=row, column=0, sticky="w", pady=(8, 4))
+            holder = ttk.Frame(tab, style="Card.TFrame")
+            holder.grid(row=row, column=1, columnspan=3, sticky="w", pady=(8, 4))
+            for key, label in specs:
+                ttk.Label(holder, text=label, style="Muted.TLabel").pack(
+                    side="left", padx=(0, 6))
+                entry = self._entry(holder, width=11)
+                entry.pack(side="left", padx=(0, 16))
+                self.edit_entries[key] = entry
+
+        field_row(1, "LAENGE  [m]", [("x", "X"), ("y", "Y"), ("z", "Z")])
+        field_row(2, "WINKEL  [deg]", [("roll", "Roll"), ("pitch", "Pitch"),
+                                       ("yaw", "Yaw")])
+        field_row(3, "ACHSE", [("ax", "X"), ("ay", "Y"), ("az", "Z")])
+        field_row(4, "AUSLENKUNG", [("lower", "min"), ("upper", "max")])
+        ttk.Label(tab, textvariable=self.edit_unit_var, style="Muted.TLabel").grid(
+            row=4, column=1, columnspan=3, sticky="e", padx=(0, 20))
+
+        actions = ttk.Frame(tab, style="Card.TFrame")
+        actions.grid(row=5, column=0, columnspan=4, sticky="w", pady=(20, 0))
+        ttk.Button(actions, text="Uebernehmen", command=self._edit_apply).pack(
+            side="left")
+        ttk.Button(actions, text="Feld zuruecksetzen",
+                   command=self._edit_load_joint).pack(side="left", padx=(8, 0))
+
+        ttk.Separator(tab, orient="horizontal").grid(
+            row=6, column=0, columnspan=4, sticky="ew", pady=18)
+
+        ttk.Label(tab, text="STRUKTUR", style="Section.TLabel").grid(
+            row=7, column=0, sticky="w")
+        # Dieselben Befehle wie die Schaltflaechen im Baum, nur ueber die
+        # Auswahlliste statt ueber den Zeiger. Wer lieber tippt als klickt,
+        # kommt so an dieselben Aenderungen.
+        structure = ttk.Frame(tab, style="Card.TFrame")
+        structure.grid(row=8, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        ttk.Button(structure, text="Glied anhaengen...",
+                   command=self._open_add_window).pack(side="left")
+        ttk.Button(structure, text="Glied einfuegen...",
+                   command=lambda: self._open_insert_window(
+                       self.edit_joint_var.get())).pack(side="left", padx=(8, 0))
+        ttk.Button(structure, text="Glied herausnehmen...",
+                   command=lambda: self._open_remove_window(
+                       self.edit_joint_var.get())).pack(side="left", padx=(8, 0))
+
+        structure2 = ttk.Frame(tab, style="Card.TFrame")
+        structure2.grid(row=9, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        ttk.Button(structure2, text="Gelenk und Teilbaum loeschen",
+                   command=self._delete_branch).pack(side="left")
+        self.undo_button = ttk.Button(structure2, text="Rueckgaengig",
+                                      command=self._undo, state="disabled")
+        self.undo_button.pack(side="left", padx=(8, 0))
+        self._update_undo()
+
+        ttk.Separator(tab, orient="horizontal").grid(
+            row=10, column=0, columnspan=4, sticky="ew", pady=18)
+
+        files = ttk.Frame(tab, style="Card.TFrame")
+        files.grid(row=11, column=0, columnspan=4, sticky="w")
+        ttk.Button(files, text="Speichern", command=self._save).pack(side="left")
+        ttk.Button(files, text="Speichern unter...",
+                   command=self._save_as).pack(side="left", padx=(8, 0))
+        ttk.Button(files, text="Datei neu laden",
+                   command=self._discard).pack(side="left", padx=(8, 0))
+        ttk.Label(files, text=f"Ablage: {BACKUP_DIR}",
+                  style="Muted.TLabel").pack(side="left", padx=(16, 0))
+
+        self._edit_fill_combo()
+
+    def _close_editor(self):
+        self._close_add_window()
+        self._close_insert_window()
+        self._close_remove_window()
+        if self.editor is not None:
+            self.editor.destroy()
+        self.editor = None
+        self.edit_entries = {}
+        self.undo_button = None
+        # Die Zeichenflaeche lag im Fenster und ist mit ihm weg. Ohne das
+        # Abmelden zeichnete _draw_tree spaeter auf ein totes Widget.
+        self.tree_canvas = None
+        self.tree_boxes = {}
+        self.tree_zones = {}
+        self.tree_pills = []
+        self.tree_hover = None
+
+    def _edit_fill_combo(self):
+        names = [j["name"] for j in self.joints]
+        self.edit_combo.configure(values=names)
+        if names:
+            if self.edit_joint_var.get() not in names:
+                self.edit_joint_var.set(names[0])
+            self._edit_load_joint()
+
+    def _edit_current_joint(self):
+        name = self.edit_joint_var.get()
+        for joint in self.joints:
+            if joint["name"] == name:
+                return joint
+        return None
+
+    @staticmethod
+    def _set_entry(entries, key, value, enabled=True):
+        entry = entries.get(key)
+        if entry is None:
+            return
+        entry.configure(state="normal", background=BG_OK)
+        entry.delete(0, "end")
+        entry.insert(0, value)
+        if not enabled:
+            entry.configure(state="disabled")
+
+    def _edit_set(self, key, value, enabled=True):
+        self._set_entry(self.edit_entries, key, value, enabled)
+
+    def _type_fields(self, entries, unit_var, jtype, source=None):
+        """Achs- und Anschlagfelder auf einen Gelenktyp einstellen.
+
+        Wird vom Bearbeiten-Fenster und vom Anhaengen-Fenster benutzt, damit
+        beide sich gleich verhalten. `source` ist das vorhandene Gelenk oder
+        None fuer ein neues.
+        """
+        rotational = jtype in ("revolute", "continuous")
+
+        if jtype in NEEDS_AXIS:
+            if source is not None and source["type"] in NEEDS_AXIS:
+                axis = source["axis"]
+            else:
+                axis = (0.0, 0.0, 1.0)
+            for key, value in zip(("ax", "ay", "az"), axis):
+                self._set_entry(entries, key, f"{value:.5g}")
+        else:
+            for key in ("ax", "ay", "az"):
+                self._set_entry(entries, key, "-", enabled=False)
+
+        if jtype in NEEDS_LIMIT:
+            factor = math.degrees if rotational else (lambda v: v)
+            # Alte Grenzen nur uebernehmen, wenn die Einheit dieselbe bleibt.
+            # Sonst wuerden aus 2.09 rad stillschweigend 2.09 m Hub.
+            if (source is not None and source["has_limit"]
+                    and is_rotational(source) == rotational):
+                lower, upper = factor(source["lower"]), factor(source["upper"])
+            elif rotational:
+                lower, upper = -180.0, 180.0
+            else:
+                lower, upper = -0.5, 0.5
+            self._set_entry(entries, "lower", f"{lower:.3f}")
+            self._set_entry(entries, "upper", f"{upper:.3f}")
+            unit_var.set("deg" if rotational else "m")
+        else:
+            self._set_entry(entries, "lower", "-", enabled=False)
+            self._set_entry(entries, "upper", "-", enabled=False)
+            unit_var.set("continuous: kein Anschlag" if rotational
+                         else "fest: keine Auslenkung")
+
+    @staticmethod
+    def _read_entry(entries, key):
+        """Feldwert als float. Faerbt bei Fehler und wirft ValueError."""
+        entry = entries[key]
+        try:
+            value = float(entry.get().replace(",", "."))
+        except ValueError:
+            entry.configure(background=BG_INVALID)
+            raise
+        entry.configure(background=BG_OK)
+        return value
+
+    def _edit_load_joint(self):
+        """Felder aus dem aktuellen Stand des Modells fuellen."""
+        if not self.edit_entries:
+            return
+        joint = self._edit_current_joint()
+        if joint is None:
+            return
+
+        for axis_key, index in (("x", 0), ("y", 1), ("z", 2)):
+            self._edit_set(axis_key, f"{joint['xyz'][index]:.5f}")
+        for angle_key, index in (("roll", 0), ("pitch", 1), ("yaw", 2)):
+            self._edit_set(angle_key, f"{math.degrees(joint['rpy'][index]):.3f}")
+
+        self.edit_type_var.set(joint["type"])
+        self.edit_info_var.set(f"{joint['parent']} -> {joint['child']}")
+        self._edit_type_changed(joint)
+
+        # Liste und Zeichnung zeigen immer dasselbe Gelenk. Der Abgleich steht
+        # hier, weil beide Wege hier vorbeikommen: Auswahl in der Liste und
+        # Klick in den Baum.
+        if self.tree_selected != joint["name"]:
+            self.tree_selected = joint["name"]
+        self._draw_tree()
+
+    def _edit_type_changed(self, joint=None):
+        """Achse und Anschlaege auf den gewaehlten Typ umschalten.
+
+        Aendert nichts am Modell. Beim Wechsel auf einen Typ, der etwas
+        braucht, was das Gelenk bisher nicht hat, wird ein Vorschlag
+        eingetragen, den der Bediener vor dem Uebernehmen anpassen kann.
+        """
+        if not self.edit_entries:
+            return
+        if joint is None:
+            joint = self._edit_current_joint()
+        if joint is None:
+            return
+        jtype = self.edit_type_var.get() or joint["type"]
+        self._type_fields(self.edit_entries, self.edit_unit_var, jtype, joint)
+
+    def _edit_read(self, key):
+        return self._read_entry(self.edit_entries, key)
+
+    def _edit_apply(self):
+        """Werte in den XML-Baum schreiben, pruefen und live uebernehmen."""
+        joint = self._edit_current_joint()
+        if joint is None or self.xml_root is None:
+            return
+
+        jtype = self.edit_type_var.get() or joint["type"]
+        rotational = jtype in ("revolute", "continuous")
+
+        try:
+            xyz = [self._edit_read(k) for k in ("x", "y", "z")]
+            rpy = [math.radians(self._edit_read(k)) for k in ("roll", "pitch", "yaw")]
+            axis = ([self._edit_read(k) for k in ("ax", "ay", "az")]
+                    if jtype in NEEDS_AXIS else None)
+            if jtype in NEEDS_LIMIT:
+                factor = math.radians if rotational else (lambda v: v)
+                lower = factor(self._edit_read("lower"))
+                upper = factor(self._edit_read("upper"))
+            else:
+                lower = upper = None
+        except ValueError:
+            self._log("Eingabe nicht lesbar, nichts geaendert", "error")
+            return
+
+        def mutate(draft):
+            element = next((j for j in draft.findall("joint")
+                            if j.get("name") == joint["name"]), None)
+            if element is None:
+                raise ValueError(f"Gelenk {joint['name']} nicht mehr im Baum")
+
+            element.set("type", jtype)
+            origin = element.find("origin")
+            if origin is None:
+                origin = ET.SubElement(element, "origin")
+            origin.set("xyz", fmt_origin(xyz))
+            origin.set("rpy", fmt_origin(rpy))
+            set_axis(element, axis)
+            set_limit(element, lower, upper, keep=(jtype == "continuous"))
+
+        if jtype != joint["type"]:
+            text = f"{joint['name']}: Typ {joint['type']} -> {jtype}"
+        else:
+            text = f"{joint['name']} geaendert"
+        self._commit(text, mutate)
+
+    # ----------------------------------------------------------------------
+    # Baumansicht
+    # ----------------------------------------------------------------------
+
+    def _build_tree_panel(self, parent):
+        """Zeichenflaeche fuer die Topologie. Gibt den Rahmen zurueck.
+
+        Eine schlichte tk.Canvas, kein OpenGL und keine Fremdbibliothek. Der
+        Baum hat selten mehr als ein paar Dutzend Elemente, da ist Neuzeichnen
+        billiger als jede Buchfuehrung ueber Aenderungen.
+
+        Die Flaeche liegt im Bearbeiten-Fenster, weil sie dort hingehoert: sie
+        zeigt nicht nur die Struktur, sie ist der Weg, sie zu aendern. Im
+        Hauptfenster waere sie eine Anzeige ohne Wirkung gewesen.
+        """
+        frame = tk.Frame(parent, background=SURFACE, bd=0, highlightthickness=0)
+        frame.rowconfigure(1, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        head = ttk.Frame(frame, style="Card.TFrame", padding=(12, 8, 10, 6))
+        head.grid(row=0, column=0, columnspan=2, sticky="ew")
+        ttk.Label(head, text="STRUKTUR", style="Section.TLabel").pack(side="left")
+        ttk.Label(head, textvariable=self.tree_hint_var,
+                  style="Muted.TLabel").pack(side="left", padx=(12, 0))
+
+        canvas = tk.Canvas(frame, background=SURFACE, bd=0, highlightthickness=0)
+        canvas.grid(row=1, column=0, sticky="nsew")
+        self.tree_canvas = canvas
+
+        yscroll = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        xscroll = ttk.Scrollbar(frame, orient="horizontal", command=canvas.xview)
+        canvas.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+        yscroll.grid(row=1, column=1, sticky="ns")
+        xscroll.grid(row=2, column=0, sticky="ew")
+
+        canvas.bind("<Button-1>", self._tree_click)
+        canvas.bind("<Motion>", self._tree_motion)
+        canvas.bind("<Leave>", self._tree_leave)
+        # Rad unter X11. Windows meldet <MouseWheel>, Linux zwei Tasten.
+        canvas.bind("<Button-4>", lambda _e: canvas.yview_scroll(-2, "units"))
+        canvas.bind("<Button-5>", lambda _e: canvas.yview_scroll(2, "units"))
+        return frame
+
+    def _tree_point(self, event):
+        """Zeigerort in Zeichenkoordinaten. Beruecksichtigt den Bildlauf."""
+        canvas = self.tree_canvas
+        return canvas.canvasx(event.x), canvas.canvasy(event.y)
+
+    @staticmethod
+    def _inside(box, x, y):
+        return box is not None and box[0] <= x <= box[2] and box[1] <= y <= box[3]
+
+    @staticmethod
+    def _tree_label(name, limit=17):
+        """Langer Name gekuerzt, damit er im Kasten bleibt."""
+        return name if len(name) <= limit else name[:limit - 3] + "..."
+
+    def _draw_tree(self):
+        """Baum neu zeichnen. Einziger Weg, auf dem die Flaeche Inhalt bekommt.
+
+        Erst die Kanten, dann die Kaesten: so verschwinden die Linienenden
+        unter den Kaesten und muessen nicht auf den Rand gerechnet werden.
+        """
+        canvas = self.tree_canvas
+        if canvas is None or not canvas.winfo_exists():
+            return
+
+        canvas.delete("all")
+        self.tree_boxes = {}
+        self.tree_zones = {}
+        self.tree_pill = None
+        self.tree_action = None
+
+        nodes = tree_layout(self.links, self.joints)
+        if not nodes:
+            canvas.create_text(TREE_MARGIN, TREE_MARGIN, anchor="nw",
+                               fill=WARN, font=("TkDefaultFont", 10),
+                               text="Kein Wurzel-Link, deshalb kein Baum.")
+            canvas.configure(scrollregion=(0, 0, 1, 1))
+            self.tree_hint_var.set("")
+            return
+
+        # Der gewaehlte Teilbaum wird getoent. Das ist zugleich die Vorschau
+        # aufs Loeschen: markiert ist genau das, was dabei verschwaende.
+        selected = self._joint_by_name(self.tree_selected) if self.tree_selected else None
+        marked = set(subtree_links(self.joints, selected["child"])) if selected else set()
+        roots = set(root_links(self.links, self.joints))
+
+        for joint in self.joints:
+            above = nodes.get(joint["parent"])
+            below = nodes.get(joint["child"])
+            if above is None or below is None:
+                continue                               # abgehaengt, nicht gezeichnet
+            px, py = above
+            cx, cy = below
+            top = py + TREE_NODE_H
+            mid = top + TREE_GAP_Y / 2.0
+
+            chosen = joint["name"] == self.tree_selected
+            colour = ACCENT if chosen else MUTED
+            thick = 3 if chosen else 1
+            # Gestrichelt heisst fest. Der Typ steht damit in der Linie und
+            # braucht keine zweite Beschriftung.
+            style = {"dash": (4, 3)} if joint["type"] == "fixed" else {}
+
+            canvas.create_line(px, top, px, mid, fill=colour, width=thick, **style)
+            if abs(cx - px) > 0.5:                     # Knick nur bei Verzweigung
+                canvas.create_line(px, mid, cx, mid, fill=colour, width=thick, **style)
+            canvas.create_line(cx, mid, cx, cy, fill=colour, width=thick, **style)
+
+            label = canvas.create_text(
+                cx + TREE_GRAB, (mid + cy) / 2.0, anchor="w",
+                text=joint["name"], fill=ACCENT if chosen else TEXT,
+                font=("TkDefaultFont", 9, "bold" if chosen else "normal"))
+            lx0, ly0, lx1, ly1 = canvas.bbox(label)
+            # Trefferzone: das senkrechte Stueck ueber dem Kindkasten samt
+            # Beschriftung. Der waagerechte Teil des Knicks gehoert bewusst
+            # nicht dazu, er liegt bei Verzweigungen quer ueber der Flaeche.
+            self.tree_zones[joint["name"]] = (
+                min(cx - TREE_GRAB, lx0), min(mid, ly0),
+                max(cx + TREE_GRAB, lx1), max(cy, ly1))
+
+        for link in self.links:
+            position = nodes.get(link["name"])
+            if position is None:
+                continue
+            cx, top = position
+            box = (cx - TREE_NODE_W / 2.0, top,
+                   cx + TREE_NODE_W / 2.0, top + TREE_NODE_H)
+            if link["name"] in roots:
+                fill, edge = TINT_OK, OK_GREEN
+            elif link["name"] in marked:
+                fill, edge = SELECT, ACCENT
+            else:
+                fill, edge = SURFACE, BORDER
+            canvas.create_rectangle(*box, fill=fill, outline=edge, width=1)
+            canvas.create_text((box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0,
+                               text=self._tree_label(link["name"]), fill=TEXT,
+                               font=("TkDefaultFont", 9))
+            self.tree_boxes[link["name"]] = box
+
+        area = canvas.bbox("all")
+        canvas.configure(scrollregion=(0, 0, area[2] + TREE_MARGIN,
+                                       area[3] + TREE_MARGIN))
+
+        hidden = len(self.links) - len(nodes)
+        hint = "Kasten: anhaengen   |   Kante: einfuegen"
+        if hidden > 0:
+            hint += f"   |   {hidden} Link(s) haengen an keiner Wurzel"
+        self.tree_hint_var.set(hint)
+
+    def _tree_hit(self, x, y):
+        """Was liegt unter dem Zeiger? ("node"/"edge", Name) oder None.
+
+        Von Hand statt ueber find_closest der Canvas: dort haengt das Ergebnis
+        an der Zeichenreihenfolge und liefert auch auf leerer Flaeche immer
+        irgendein Element. Hier gilt schlicht, ob der Punkt im Rechteck liegt.
+        """
+        for name, box in self.tree_boxes.items():
+            if self._inside(box, x, y):
+                return "node", name
+        for name, zone in self.tree_zones.items():
+            if self._inside(zone, x, y):
+                return "edge", name
+        return None
+
+    def _tree_draw_pill(self):
+        """Schaltflaechen neben dem Element unter dem Zeiger.
+
+        Am Kasten haengt eine, an der Kante zwei: einfuegen und herausnehmen
+        sind zueinander die Umkehrung und gehoeren deshalb nebeneinander.
+        """
+        canvas = self.tree_canvas
+        if canvas is None or not canvas.winfo_exists():
+            return
+        canvas.delete("pill")
+        self.tree_pills = []
+        if self.tree_hover is None:
+            return
+
+        kind, name = self.tree_hover
+        if kind == "node":
+            anchor = self.tree_boxes.get(name)
+            offers = [("Anhaengen", lambda: self._open_add_window(parent=name))]
+        else:
+            anchor = self.tree_zones.get(name)
+            offers = [("Einfuegen", lambda: self._open_insert_window(name)),
+                      ("Herausnehmen", lambda: self._open_remove_window(name))]
+        if anchor is None:                             # Baum wurde zwischendurch neu gebaut
+            self.tree_hover = None
+            return
+
+        left = anchor[2] + 10
+        top = (anchor[1] + anchor[3]) / 2.0 - 10
+        for text, action in offers:
+            box = (left, top, left + 8 * len(text) + 18, top + 20)
+            canvas.create_rectangle(*box, fill=SELECT, outline=ACCENT, width=1,
+                                    tags="pill")
+            canvas.create_text((box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0,
+                               text=text, fill=ACCENT, tags="pill",
+                               font=("TkDefaultFont", 9, "bold"))
+            self.tree_pills.append((box, action))
+            left = box[2] + 6
+
+    def _tree_pill_at(self, x, y):
+        """Befehl der Schaltflaeche unter dem Punkt oder None."""
+        for box, action in self.tree_pills:
+            if self._inside(box, x, y):
+                return action
+        return None
+
+    def _tree_motion(self, event):
+        x, y = self._tree_point(event)
+        # Steht der Zeiger auf einer Schaltflaeche, bleiben sie stehen. Sonst
+        # verschwaenden sie genau auf dem Weg dorthin.
+        if self._tree_pill_at(x, y) is not None:
+            return
+        hit = self._tree_hit(x, y)
+        if hit == self.tree_hover:
+            return
+        self.tree_hover = hit
+        self._tree_draw_pill()
+
+    def _tree_leave(self, _event=None):
+        if self.tree_hover is not None:
+            self.tree_hover = None
+            self._tree_draw_pill()
+
+    def _tree_click(self, event):
+        x, y = self._tree_point(event)
+        action = self._tree_pill_at(x, y)
+        if action is not None:
+            self.tree_hover = None
+            self._tree_draw_pill()
+            action()
+            return
+
+        hit = self._tree_hit(x, y)
+        if hit is None:
+            return
+        kind, name = hit
+        if kind == "node":
+            # Ein Kasten hat keinen eigenen Eintrag zum Bearbeiten. Gemeint
+            # ist das Gelenk, das zu ihm fuehrt; der Wurzel-Link hat keines.
+            joint = next((j for j in self.joints if j["child"] == name), None)
+            name = joint["name"] if joint is not None else None
+        self._tree_select(name)
+
+    def _tree_select(self, name):
+        """Auswahl setzen und mit der Liste im Bearbeiten-Fenster abgleichen."""
+        if name and self.editor is not None and self.editor.winfo_exists():
+            self.edit_joint_var.set(name)
+            self._edit_load_joint()                    # zeichnet den Baum mit
+        else:
+            self.tree_selected = name
+            self._draw_tree()
+        self._tree_draw_pill()
+
+    # ----------------------------------------------------------------------
+    # Struktur: anhaengen, einfuegen und loeschen
+    # ----------------------------------------------------------------------
+
+    def _suggest_name(self, stem, taken):
+        """stem1, stem2, ... bis einer frei ist."""
+        index = len(taken) + 1
+        while f"{stem}{index}" in taken:
+            index += 1
+        return f"{stem}{index}"
+
+    def _open_add_window(self, parent=None):
+        """Neues Glied anlegen: Link und zufuehrendes Gelenk in einem Schritt.
+
+        Getrennt ginge es nicht ohne Zwischenschritt mit ungueltigem Modell:
+        ein Link ohne Gelenk waere ein zweiter Wurzel-Link.
+
+        `parent` kommt aus der Baumansicht: dort ist der Anschlusspunkt schon
+        angeklickt und muss nicht noch einmal aus einer Liste gesucht werden.
+        """
+        known = {l["name"] for l in self.links}
+        if self.add_window is not None and self.add_window.winfo_exists():
+            if parent in known:
+                self.add_parent_var.set(parent)
+            self.add_window.lift()
+            return
+        if not self.links:
+            self._log("Kein Modell geladen", "warn")
+            return
+
+        window = tk.Toplevel(self.editor or self)
+        window.title("Glied anhaengen")
+        window.configure(background=BG)
+        window.transient(self.editor or self)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._close_add_window)
+        window.grab_set()                              # kein zweites Fenster
+        self.add_window = window
+
+        card = self._card(window)
+        card.pack(fill="both", expand=True, padx=PAD, pady=PAD)
+        tab = ttk.Frame(card, style="Card.TFrame", padding=(18, 16))
+        tab.pack(fill="both", expand=True)
+        self.add_entries = {}
+
+        link_names = [l["name"] for l in self.links]
+        joint_names = {j["name"] for j in self.joints}
+
+        head = ttk.Frame(tab, style="Card.TFrame")
+        head.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 14))
+        ttk.Label(head, text="Neuer Link", style="Card.TLabel").pack(side="left")
+        entry = self._entry(head, width=16,
+                            value=self._suggest_name("link", set(link_names)))
+        entry.configure(justify="left")
+        entry.pack(side="left", padx=(10, 18))
+        self.add_entries["link"] = entry
+
+        ttk.Label(head, text="haengt an", style="Card.TLabel").pack(side="left")
+        parent_combo = ttk.Combobox(head, textvariable=self.add_parent_var,
+                                    state="readonly", width=18,
+                                    values=link_names)
+        parent_combo.pack(side="left", padx=(10, 0))
+        if parent in known:
+            self.add_parent_var.set(parent)            # aus der Baumansicht
+        else:
+            # Vorschlag: der aktuelle Endeffektor, dort wird meist angebaut.
+            leaves = [n for n in leaf_links(self.links, self.joints)]
+            self.add_parent_var.set(leaves[-1] if leaves else link_names[0])
+
+        second = ttk.Frame(tab, style="Card.TFrame")
+        second.grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        ttk.Label(second, text="Gelenkname", style="Card.TLabel").pack(side="left")
+        entry = self._entry(second, width=16,
+                            value=self._suggest_name("joint", joint_names))
+        entry.configure(justify="left")
+        entry.pack(side="left", padx=(10, 18))
+        self.add_entries["joint"] = entry
+
+        ttk.Label(second, text="Typ", style="Card.TLabel").pack(side="left")
+        type_combo = ttk.Combobox(second, textvariable=self.add_type_var,
+                                  state="readonly", width=12,
+                                  values=list(JOINT_TYPES))
+        type_combo.pack(side="left", padx=(10, 0))
+        type_combo.bind("<<ComboboxSelected>>", lambda _e: self._add_type_changed())
+
+        def field_row(row, title, specs, defaults):
+            ttk.Label(tab, text=title, style="Section.TLabel").grid(
+                row=row, column=0, sticky="w", pady=(8, 4))
+            holder = ttk.Frame(tab, style="Card.TFrame")
+            holder.grid(row=row, column=1, columnspan=3, sticky="w", pady=(8, 4))
+            for (key, label), default in zip(specs, defaults):
+                ttk.Label(holder, text=label, style="Muted.TLabel").pack(
+                    side="left", padx=(0, 6))
+                field = self._entry(holder, width=11, value=default)
+                field.pack(side="left", padx=(0, 16))
+                self.add_entries[key] = field
+
+        field_row(2, "LAENGE  [m]", [("x", "X"), ("y", "Y"), ("z", "Z")],
+                  ["0.00000", "0.00000", "0.10000"])
+        field_row(3, "WINKEL  [deg]", [("roll", "Roll"), ("pitch", "Pitch"),
+                                       ("yaw", "Yaw")], ["0.000"] * 3)
+        field_row(4, "ACHSE", [("ax", "X"), ("ay", "Y"), ("az", "Z")],
+                  ["0", "0", "1"])
+        field_row(5, "AUSLENKUNG", [("lower", "min"), ("upper", "max")],
+                  ["-180.000", "180.000"])
+        ttk.Label(tab, textvariable=self.add_unit_var, style="Muted.TLabel").grid(
+            row=5, column=1, columnspan=3, sticky="e", padx=(0, 20))
+
+        actions = ttk.Frame(tab, style="Card.TFrame")
+        actions.grid(row=6, column=0, columnspan=4, sticky="w", pady=(20, 0))
+        ttk.Button(actions, text="Anlegen", command=self._add_apply).pack(side="left")
+        ttk.Button(actions, text="Abbrechen",
+                   command=self._close_add_window).pack(side="left", padx=(8, 0))
+        ttk.Label(tab, text="Der neue Link bekommt keine Masse und keine "
+                            "Geometrie. Er ist ein Koordinatensystem.",
+                  style="Muted.TLabel").grid(row=7, column=0, columnspan=4,
+                                             sticky="w", pady=(14, 0))
+
+        self._add_type_changed()
+
+    def _close_add_window(self):
+        if self.add_window is not None and self.add_window.winfo_exists():
+            self.add_window.grab_release()
+            self.add_window.destroy()
+        self.add_window = None
+        self.add_entries = {}
+
+    def _add_type_changed(self):
+        self._type_fields(self.add_entries, self.add_unit_var,
+                          self.add_type_var.get())
+
+    def _add_apply(self):
+        """Eingaben pruefen und das neue Glied anhaengen."""
+        jtype = self.add_type_var.get()
+        rotational = jtype in ("revolute", "continuous")
+        link_name = self.add_entries["link"].get().strip()
+        joint_name = self.add_entries["joint"].get().strip()
+        parent = self.add_parent_var.get()
+
+        # -- Namen zuerst, sie sind der haeufigste Fehler -------------------
+        problems = [p for p in (
+            name_problem(link_name, "Link", {l["name"] for l in self.links}),
+            name_problem(joint_name, "Gelenk", {j["name"] for j in self.joints}),
+        ) if p]
+        if link_name and link_name == joint_name:
+            problems.append("Link und Gelenk duerfen nicht gleich heissen")
+        if parent not in {l["name"] for l in self.links}:
+            problems.append("Kein gueltiger Anschlusspunkt gewaehlt")
+        if problems:
+            messagebox.showerror("Anhaengen", "\n".join(problems))
+            for problem in problems:
+                self._log(problem, "error")
+            return
+
+        try:
+            xyz = [self._read_entry(self.add_entries, k) for k in ("x", "y", "z")]
+            rpy = [math.radians(self._read_entry(self.add_entries, k))
+                   for k in ("roll", "pitch", "yaw")]
+            axis = ([self._read_entry(self.add_entries, k)
+                     for k in ("ax", "ay", "az")] if jtype in NEEDS_AXIS else None)
+            if jtype in NEEDS_LIMIT:
+                factor = math.radians if rotational else (lambda v: v)
+                lower = factor(self._read_entry(self.add_entries, "lower"))
+                upper = factor(self._read_entry(self.add_entries, "upper"))
+            else:
+                lower = upper = None
+        except ValueError:
+            self._log("Eingabe nicht lesbar, nichts angelegt", "error")
+            return
+
+        def mutate(draft):
+            append_limb(draft, link_name, joint_name, jtype, parent,
+                        xyz, rpy, axis, lower, upper)
+
+        if self._commit(f"{link_name} ueber {joint_name} an {parent} angehaengt",
+                        mutate):
+            self._close_add_window()
+
+    def _open_insert_window(self, below):
+        """Neues Glied zwischen zwei bestehende haengen.
+
+        Der Unterschied zum Anhaengen steht in einem einzigen Feld: das
+        angeklickte Gelenk wandert unter den neuen Link. Alles andere ist
+        dieselbe Eingabe, deshalb sieht das Fenster auch gleich aus.
+        """
+        if self.add_window is not None and self.add_window.winfo_exists():
+            self.add_window.lift()                     # erst das andere zuende
+            return
+        if self.insert_window is not None and self.insert_window.winfo_exists():
+            self.insert_window.lift()
+            return
+        joint = self._joint_by_name(below)
+        if joint is None:
+            return
+        self.insert_below = below
+
+        window = tk.Toplevel(self)
+        window.title("Glied einfuegen")
+        window.configure(background=BG)
+        window.transient(self)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._close_insert_window)
+        window.grab_set()
+        self.insert_window = window
+
+        card = self._card(window)
+        card.pack(fill="both", expand=True, padx=PAD, pady=PAD)
+        tab = ttk.Frame(card, style="Card.TFrame", padding=(18, 16))
+        tab.pack(fill="both", expand=True)
+        self.insert_entries = {}
+
+        link_names = {l["name"] for l in self.links}
+        joint_names = {j["name"] for j in self.joints}
+        new_link = self._suggest_name("link", link_names)
+
+        def show_chain(_event=None):
+            """Zeigt die Kette, wie sie nach dem Einfuegen aussieht."""
+            entry = self.insert_entries.get("link")
+            name = entry.get().strip() if entry is not None else new_link
+            self.insert_info_var.set(
+                f"{joint['parent']}  ->  {name or '?'}  ->  {joint['child']}"
+                f"      bisher: {joint['parent']}  ->  {joint['child']}")
+        show_chain()
+
+        head = ttk.Frame(tab, style="Card.TFrame")
+        head.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 14))
+        ttk.Label(head, text="Neuer Link", style="Card.TLabel").pack(side="left")
+        entry = self._entry(head, width=16, value=new_link)
+        entry.configure(justify="left")
+        entry.pack(side="left", padx=(10, 18))
+        self.insert_entries["link"] = entry
+        entry.bind("<KeyRelease>", show_chain)
+        ttk.Label(head, text=f"vor {below}", style="Card.TLabel").pack(side="left")
+
+        second = ttk.Frame(tab, style="Card.TFrame")
+        second.grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        ttk.Label(second, text="Gelenkname", style="Card.TLabel").pack(side="left")
+        entry = self._entry(second, width=16,
+                            value=self._suggest_name("joint", joint_names))
+        entry.configure(justify="left")
+        entry.pack(side="left", padx=(10, 18))
+        self.insert_entries["joint"] = entry
+
+        ttk.Label(second, text="Typ", style="Card.TLabel").pack(side="left")
+        type_combo = ttk.Combobox(second, textvariable=self.insert_type_var,
+                                  state="readonly", width=12,
+                                  values=list(JOINT_TYPES))
+        type_combo.pack(side="left", padx=(10, 0))
+        type_combo.bind("<<ComboboxSelected>>",
+                        lambda _e: self._insert_type_changed())
+
+        def field_row(row, title, specs, defaults):
+            ttk.Label(tab, text=title, style="Section.TLabel").grid(
+                row=row, column=0, sticky="w", pady=(8, 4))
+            holder = ttk.Frame(tab, style="Card.TFrame")
+            holder.grid(row=row, column=1, columnspan=3, sticky="w", pady=(8, 4))
+            for (key, label), default in zip(specs, defaults):
+                ttk.Label(holder, text=label, style="Muted.TLabel").pack(
+                    side="left", padx=(0, 6))
+                field = self._entry(holder, width=11, value=default)
+                field.pack(side="left", padx=(0, 16))
+                self.insert_entries[key] = field
+
+        # Null als Vorgabe, anders als beim Anhaengen: der haeufigste Fall ist
+        # ein Frame an derselben Stelle, und der aendert dann gar nichts.
+        field_row(2, "LAENGE  [m]", [("x", "X"), ("y", "Y"), ("z", "Z")],
+                  ["0.00000"] * 3)
+        field_row(3, "WINKEL  [deg]", [("roll", "Roll"), ("pitch", "Pitch"),
+                                       ("yaw", "Yaw")], ["0.000"] * 3)
+        field_row(4, "ACHSE", [("ax", "X"), ("ay", "Y"), ("az", "Z")],
+                  ["0", "0", "1"])
+        field_row(5, "AUSLENKUNG", [("lower", "min"), ("upper", "max")],
+                  ["-180.000", "180.000"])
+        ttk.Label(tab, textvariable=self.insert_unit_var,
+                  style="Muted.TLabel").grid(row=5, column=1, columnspan=3,
+                                             sticky="e", padx=(0, 20))
+
+        ttk.Separator(tab, orient="horizontal").grid(
+            row=6, column=0, columnspan=4, sticky="ew", pady=14)
+        ttk.Checkbutton(tab, text=f"Lage von {joint['child']} und allem dahinter "
+                                  f"beibehalten",
+                        variable=self.insert_keep_var).grid(
+            row=7, column=0, columnspan=4, sticky="w")
+        ttk.Label(tab, text=f"Aus: der Ursprung von {below} bleibt stehen und "
+                            f"der Teilbaum wandert mit dem neuen Glied mit.",
+                  style="Muted.TLabel").grid(row=8, column=0, columnspan=4,
+                                             sticky="w", pady=(4, 0))
+        ttk.Label(tab, textvariable=self.insert_info_var,
+                  style="Muted.TLabel").grid(row=9, column=0, columnspan=4,
+                                             sticky="w", pady=(10, 0))
+
+        actions = ttk.Frame(tab, style="Card.TFrame")
+        actions.grid(row=10, column=0, columnspan=4, sticky="w", pady=(18, 0))
+        ttk.Button(actions, text="Einfuegen",
+                   command=self._insert_apply).pack(side="left")
+        ttk.Button(actions, text="Abbrechen",
+                   command=self._close_insert_window).pack(side="left", padx=(8, 0))
+
+        self._insert_type_changed()
+
+    def _close_insert_window(self):
+        if self.insert_window is not None and self.insert_window.winfo_exists():
+            self.insert_window.grab_release()
+            self.insert_window.destroy()
+        self.insert_window = None
+        self.insert_entries = {}
+        self.insert_below = None
+
+    def _insert_type_changed(self):
+        self._type_fields(self.insert_entries, self.insert_unit_var,
+                          self.insert_type_var.get())
+
+    def _insert_apply(self):
+        """Eingaben pruefen und das neue Glied in die Kette haengen."""
+        below = self.insert_below
+        if below is None or self._joint_by_name(below) is None:
+            self._log(f"Gelenk {below} gibt es nicht mehr", "error")
+            self._close_insert_window()
+            return
+
+        jtype = self.insert_type_var.get()
+        rotational = jtype in ("revolute", "continuous")
+        link_name = self.insert_entries["link"].get().strip()
+        joint_name = self.insert_entries["joint"].get().strip()
+
+        problems = [p for p in (
+            name_problem(link_name, "Link", {l["name"] for l in self.links}),
+            name_problem(joint_name, "Gelenk", {j["name"] for j in self.joints}),
+        ) if p]
+        if link_name and link_name == joint_name:
+            problems.append("Link und Gelenk duerfen nicht gleich heissen")
+        if problems:
+            messagebox.showerror("Einfuegen", "\n".join(problems))
+            for problem in problems:
+                self._log(problem, "error")
+            return
+
+        try:
+            xyz = [self._read_entry(self.insert_entries, k) for k in ("x", "y", "z")]
+            rpy = [math.radians(self._read_entry(self.insert_entries, k))
+                   for k in ("roll", "pitch", "yaw")]
+            axis = ([self._read_entry(self.insert_entries, k)
+                     for k in ("ax", "ay", "az")] if jtype in NEEDS_AXIS else None)
+            if jtype in NEEDS_LIMIT:
+                factor = math.radians if rotational else (lambda v: v)
+                lower = factor(self._read_entry(self.insert_entries, "lower"))
+                upper = factor(self._read_entry(self.insert_entries, "upper"))
+            else:
+                lower = upper = None
+        except ValueError:
+            self._log("Eingabe nicht lesbar, nichts eingefuegt", "error")
+            return
+
+        keep = self.insert_keep_var.get()
+
+        def mutate(draft):
+            insert_limb(draft, link_name, joint_name, jtype, below,
+                        xyz, rpy, axis, lower, upper, keep)
+
+        text = (f"{link_name} ueber {joint_name} vor {below} eingefuegt"
+                f"{'' if keep else ', Teilbaum mitgewandert'}")
+        if self._commit(text, mutate):
+            self._tree_select(joint_name)
+            self._close_insert_window()
+
+    def _open_remove_window(self, joint_name):
+        """Ein einzelnes Glied herausnehmen, ohne den Teilbaum zu verlieren.
+
+        Bewusst mit Rueckfrage in einem eigenen Fenster statt als schlichte
+        Messagebox: was verschwindet und was eine Stufe hochwandert, sind
+        zwei verschiedene Dinge, und die Umrechnung ist eine echte Wahl.
+        """
+        for other in (self.add_window, self.insert_window):
+            if other is not None and other.winfo_exists():
+                other.lift()
+                return
+        if self.remove_window is not None and self.remove_window.winfo_exists():
+            self.remove_window.lift()
+            return
+        joint = self._joint_by_name(joint_name)
+        if joint is None:
+            self._log("Kein Gelenk gewaehlt", "warn")
+            return
+        self.remove_joint = joint_name
+
+        below = [j for j in self.joints if j["parent"] == joint["child"]]
+
+        window = tk.Toplevel(self.editor or self)
+        window.title("Glied herausnehmen")
+        window.configure(background=BG)
+        window.transient(self.editor or self)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._close_remove_window)
+        window.grab_set()
+        self.remove_window = window
+
+        card = self._card(window)
+        card.pack(fill="both", expand=True, padx=PAD, pady=PAD)
+        tab = ttk.Frame(card, style="Card.TFrame", padding=(18, 16))
+        tab.pack(fill="both", expand=True)
+
+        ttk.Label(tab, text=f"Link {joint['child']} und Gelenk {joint_name} "
+                            f"entfernen", style="Card.TLabel").grid(
+            row=0, column=0, sticky="w")
+
+        if below:
+            names = ", ".join(j["name"] for j in below)
+            moved = (f"{len(below)} Gelenk(e) wandern von {joint['child']} "
+                     f"an {joint['parent']}: {names}")
+        else:
+            moved = (f"{joint['child']} ist das Ende der Kette, es haengt "
+                     f"nichts daran.")
+        ttk.Label(tab, text=moved, style="Muted.TLabel").grid(
+            row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(tab, text=f"Danach: {joint['parent']}  ->  "
+                            + (", ".join(j["child"] for j in below) or "(Ende)"),
+                  style="Muted.TLabel").grid(row=2, column=0, sticky="w",
+                                             pady=(4, 0))
+
+        if joint["type"] != "fixed":
+            ttk.Label(tab, text=f"Achtung: {joint_name} ist beweglich. Mit dem "
+                                f"Gelenk faellt ein Freiheitsgrad weg.",
+                      style="Muted.TLabel").grid(row=3, column=0, sticky="w",
+                                                 pady=(10, 0))
+
+        ttk.Separator(tab, orient="horizontal").grid(
+            row=4, column=0, sticky="ew", pady=14)
+
+        keep = ttk.Checkbutton(tab, text="Lage der nachfolgenden Glieder "
+                                         "beibehalten",
+                               variable=self.remove_keep_var)
+        keep.grid(row=5, column=0, sticky="w")
+        if not below:
+            # Nichts zu verschieben, die Wahl waere ohne Wirkung.
+            keep.state(["disabled"])
+        ttk.Label(tab, text="Aus: die Urspruenge bleiben stehen und der Rest "
+                            "der Kette rueckt um das Glied vor.",
+                  style="Muted.TLabel").grid(row=6, column=0, sticky="w",
+                                             pady=(4, 0))
+
+        actions = ttk.Frame(tab, style="Card.TFrame")
+        actions.grid(row=7, column=0, sticky="w", pady=(18, 0))
+        ttk.Button(actions, text="Herausnehmen",
+                   command=self._remove_apply).pack(side="left")
+        ttk.Button(actions, text="Abbrechen",
+                   command=self._close_remove_window).pack(side="left", padx=(8, 0))
+
+    def _close_remove_window(self):
+        if self.remove_window is not None and self.remove_window.winfo_exists():
+            self.remove_window.grab_release()
+            self.remove_window.destroy()
+        self.remove_window = None
+        self.remove_joint = None
+
+    def _remove_apply(self):
+        joint_name = self.remove_joint
+        joint = self._joint_by_name(joint_name) if joint_name else None
+        if joint is None:
+            self._log(f"Gelenk {joint_name} gibt es nicht mehr", "error")
+            self._close_remove_window()
+            return
+
+        gone_link = joint["child"]
+        above = joint["parent"]
+        keep = self.remove_keep_var.get()
+        moved = sum(1 for j in self.joints if j["parent"] == gone_link)
+
+        def mutate(draft):
+            remove_limb(draft, joint_name, keep)
+
+        text = (f"{gone_link} und {joint_name} herausgenommen, "
+                f"{moved} Gelenk(e) an {above}")
+        if self._commit(text, mutate):
+            self._tree_select(None)
+            self._close_remove_window()
+
+    def _delete_branch(self):
+        """Ausgewaehltes Gelenk mit seinem Kindlink und allem dahinter loeschen.
+
+        Einzeln geht nicht: bliebe der Kindlink stehen, waere er ein zweiter
+        Wurzel-Link. Was verschwindet, steht vorher in der Rueckfrage.
+        """
+        joint = self._edit_current_joint()
+        if joint is None or self.xml_root is None:
+            return
+
+        going_links = subtree_links(self.joints, joint["child"])
+        going_joints = [j["name"] for j in self.joints
+                        if j["child"] in set(going_links)]
+
+        roots = root_links(self.links, self.joints)
+        if joint["child"] in roots:                    # kann eigentlich nicht sein
+            messagebox.showerror("Loeschen", "Der Wurzel-Link bleibt bestehen.")
+            return
+
+        text = (f"Gelenk {joint['name']} und alles dahinter entfernen?\n\n"
+                f"Links ({len(going_links)}): {', '.join(going_links)}\n"
+                f"Gelenke ({len(going_joints)}): {', '.join(going_joints)}")
+        if len(going_links) > 1:
+            text += "\n\nDas ist ein ganzer Teilbaum, nicht nur ein Glied."
+        if not messagebox.askyesno("Loeschen", text):
+            return
+
+        def mutate(draft):
+            remove_branch(draft, going_links)
+
+        self._commit(f"{joint['name']} und {len(going_links)} Link(s) geloescht",
+                     mutate)
+
+    def _rebuild_from_root(self):
+        """Modell, Tabellen, FK und TF-Ausgabe an den geaenderten Baum anpassen."""
+        self.robot_name, self.links, self.joints = parse_root(self.xml_root)
+        self.urdf_xml = serialize(self.xml_root)
+
+        # Sollwerte behalten, aber an eventuell engere Grenzen anpassen. Ein
+        # Gelenk kann durch den Typwechsel beweglich geworden oder fest
+        # geworden sein, deshalb wird die Zuordnung neu aufgebaut.
+        positions = {}
+        for joint in self.joints:
+            if joint["type"] == "fixed":
+                continue
+            value = self.positions.get(joint["name"], 0.0)
+            if joint["has_limit"]:
+                value = min(max(value, joint["lower"]), joint["upper"])
+            positions[joint["name"]] = value
+        self.positions = positions
+
+        self._update_header()
+        self._build_joint_inputs()
+        self._sync_joint_entries()
+        self._fill_link_table()
+        self._update_kinematics()
+        self._draw_tree()
+        # Nach dem Anlegen oder Loeschen stimmt die Auswahlliste nicht mehr.
+        if self.editor is not None and self.editor.winfo_exists():
+            self._edit_fill_combo()
+
+        # Der Stern haengt am Inhalt, nicht am Zaehlen der Aenderungen:
+        # nach Rueckgaengig bis zum Ausgangsstand ist nichts mehr offen.
+        self._set_dirty(self.urdf_xml != self.saved_signature)
+
+        self.ros.set_model(self.joints, self.urdf_xml)
+        self.ros.set_positions(self.positions)
+
+    # ----------------------------------------------------------------------
+    # ROS und Fusszeile
+    # ----------------------------------------------------------------------
+
+    def _start_ros(self):
+        error = self.ros.start()
+        if error:
+            self._log(error, "warn")
+
+    def _toggle_tf(self):
+        self.ros.enabled = self.send_tf.get()
+        if not self.send_tf.get():
+            self._log("TF-Ausgabe angehalten. RViz verliert nach der Cache-Zeit "
+                      "von etwa 10 Sekunden alle Frames.", "warn")
+        else:
+            self._log("TF-Ausgabe laeuft wieder", "ok")
+
+    def _tick(self):
+        """Fusszeile aktualisieren. Laeuft im GUI-Thread, greift nie auf ROS zu."""
+        elapsed = time.monotonic() - self.session_start
+        whole = int(elapsed)
+        self.session_var.set(
+            f"Session  {whole // 3600:02d}:{whole // 60 % 60:02d}:"
+            f"{whole % 60:02d}:{int((elapsed - whole) * 1000):03d}")
+
+        last = self.ros.last_publish
+        if not self.ros.running:
+            self.refresh_var.set("Last Refresh  --   kein ROS")
+        elif not self.send_tf.get():
+            self.refresh_var.set("Last Refresh  --   angehalten")
+        elif last is None:
+            self.refresh_var.set("Last Refresh  --   wartet")
+        else:
+            age_ms = (time.monotonic() - last) * 1000.0
+            cycle = self.ros.cycle_ms
+            takt = f"   Takt {cycle:5.1f} ms" if cycle is not None else ""
+            self.refresh_var.set(f"Last Refresh {age_ms:6.1f} ms{takt}")
+
+        self.after(FOOTER_TICK_MS, self._tick)
+
+    def _on_close(self):
+        if self.dirty and not messagebox.askyesno(
+                "Beenden", "Es gibt nicht gespeicherte Aenderungen. Trotzdem beenden?"):
+            return
+        self.ros.shutdown()
+        self.destroy()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("urdf", nargs="?", default=URDF_PATH)
+    args, _ = parser.parse_known_args()
+
+    app = UrdfViewer(args.urdf)
+    app.mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

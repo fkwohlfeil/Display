@@ -37,13 +37,27 @@ Alte Dateien werden beim Lesen einmal umgesetzt (A = yaw, B = pitch,
 C = roll) und sind danach von neuen nicht mehr zu unterscheiden. Es gibt
 keine zweite Deutung derselben drei Zahlen weiter unten im Programm.
 
+Mehrere Bahnen gleichzeitig:
+
+Es lassen sich beliebig viele CSV-Dateien nebeneinander laden ("Hinzufuegen"
+in der Toolbar oder mehrere Dateien beim Aufruf). Jede Bahn bekommt eine
+eigene Farbe und laesst sich im Fenster BAHNEN ein- und ausblenden. Eine
+davon ist die aktive Bahn: sie gibt den Takt fuer Ablauf und Schieberegler
+vor, ihre Werte stehen im Fuss, an ihr haengen Modell und Schatten. Die
+Marker der uebrigen Bahnen laufen mit, und zwar zur selben verstrichenen
+Zeit seit Bahnbeginn -- so lassen sich zwei Planer direkt vergleichen. Die
+Einfaerbung nutzt eine gemeinsame Skala ueber alle sichtbaren Bahnen, sonst
+waeren gleiche Farben verschiedene Geschwindigkeiten.
+
 Aufruf:
     ./bahn_viewer3.py
     ./bahn_viewer3.py ~/Display/URDF_Speicher/bahn_20260812_101500.csv
+    ./bahn_viewer3.py bahn_a.csv bahn_b.csv   mehrere Bahnen zum Vergleich
     ./bahn_viewer3.py --pruefen datei.csv     nur einlesen und berichten
 """
 
 import argparse
+import bisect
 import csv
 import json
 import math
@@ -108,6 +122,11 @@ VIEWS = {                                              # Azimut, Elevation in gr
 }
 
 ROOM_COLORS = ["#2563c9", "#1a7f37", "#9a6700", "#8e44ad", "#c0392b", "#00838f"]
+
+# Je Bahn eine Farbe. Die erste ist die alte Bahnfarbe, damit eine einzelne
+# Bahn aussieht wie bisher. Rot fehlt bewusst: das gehoert dem Marker.
+TRACK_COLORS = ["#2563c9", "#d97706", "#7c3aed", "#0f766e", "#db2777",
+                "#4d7c0f", "#475569", "#0891b2"]
 
 
 # ==========================================================================
@@ -682,6 +701,19 @@ class Track:
                    konvention, quelle, winkel_cols is not None)
 
 
+class TrackEntry:
+    """Eine geladene Bahn in der Liste: Daten, Farbe und Sichtbarkeit."""
+
+    def __init__(self, track, colour, visible=True):
+        self.track = track
+        self.colour = colour
+        self.visible = visible
+
+    @property
+    def name(self):
+        return os.path.basename(self.track.path)
+
+
 class Room:
     """Quader als Arbeitsraum oder Sperrbereich. Achsparallel."""
 
@@ -839,13 +871,15 @@ class FoldPanel(tk.Frame):
 class BahnViewer(tk.Tk):
 
     def __init__(self, csv_path=None):
+        """`csv_path` ist ein Pfad oder eine Liste von Pfaden."""
         super().__init__()
         self.title("Bahnansicht")
         self.geometry("1280x820")
         self.minsize(900, 600)
         self.configure(background=BG)
 
-        self.track = None
+        self.entries = []                              # alle geladenen Bahnen
+        self.track = None                              # die aktive davon
         self.rooms = []
         self.cam = Camera()
         self.mode = "rotate"                           # oder "pan"
@@ -859,6 +893,9 @@ class BahnViewer(tk.Tk):
         # Schriftgroessen, Punktradien. Beim Export auf 2 gesetzt, damit das
         # Bild in doppelter Aufloesung genauso aussieht und nicht feiner wird.
         self._px = 1.0
+        # Wertebereich der Einfaerbung ueber alle sichtbaren Bahnen, wird je
+        # Bild einmal bestimmt: (unten, oben, gekappt).
+        self._range = (0.0, 0.0, False)
 
         self.file_var = tk.StringVar(value="keine Datei geladen")
         self.info_var = tk.StringVar(value="")
@@ -869,6 +906,9 @@ class BahnViewer(tk.Tk):
         self.show_grid = tk.BooleanVar(value=True)
         self.show_model = tk.BooleanVar(value=True)
         self.model_triads = tk.BooleanVar(value=True)
+        self.all_models = tk.BooleanVar(value=False)
+        self.show_names = tk.BooleanVar(value=True)
+        self.active_var = tk.IntVar(value=0)
         self.show_ghosts = tk.BooleanVar(value=False)
         self.ghost_every = tk.IntVar(value=40)
         self.show_rooms = tk.BooleanVar(value=True)
@@ -891,9 +931,10 @@ class BahnViewer(tk.Tk):
         self._build_foot()
         self._bind_mouse()
 
-        if csv_path:
-            self._load(csv_path)
-        else:
+        paths = [csv_path] if isinstance(csv_path, str) else list(csv_path or ())
+        for path in paths:
+            self._load(path, add=True)
+        if not self.entries:
             self._redraw()
         self._play_tick()
 
@@ -943,6 +984,11 @@ class BahnViewer(tk.Tk):
                         focuscolor=SURFACE, font=("TkDefaultFont", 9))
         style.map("TCheckbutton", background=[("active", SURFACE)],
                   indicatorcolor=[("selected", ACCENT)])
+        style.configure("TRadiobutton", background=SURFACE, foreground=TEXT,
+                        focuscolor=SURFACE, font=("TkDefaultFont", 9))
+        style.map("TRadiobutton", background=[("active", SURFACE)],
+                  indicatorcolor=[("selected", ACCENT)])
+        style.configure("Active.TRadiobutton", font=("TkDefaultFont", 9, "bold"))
         style.configure("TCombobox", fieldbackground=SURFACE, background=BUTTON,
                         arrowcolor=TEXT, bordercolor=BORDER, padding=3)
         style.configure("TScale", background=SURFACE, troughcolor=BUTTON,
@@ -966,6 +1012,8 @@ class BahnViewer(tk.Tk):
         inner.pack(fill="x")
 
         ttk.Button(inner, text="CSV laden...", command=self._choose).pack(side="left")
+        ttk.Button(inner, text="Hinzufuegen...", command=self._choose_add).pack(
+            side="left", padx=(6, 0))
         ttk.Button(inner, text="Neu laden", command=self._reload).pack(
             side="left", padx=(6, 0))
         ttk.Separator(inner, orient="vertical").pack(side="left", fill="y",
@@ -1025,16 +1073,67 @@ class BahnViewer(tk.Tk):
         self._set_mode("rotate")
 
     def _build_panels(self):
-        """Zwei schwebende Fenster rechts, oben Darstellung, unten Ablauf."""
+        """Zwei schwebende Fenster rechts, oben Darstellung, unten Ablauf.
+        Links oben die Liste der geladenen Bahnen."""
         self.panel_view = FoldPanel(self.holder, "DARSTELLUNG")
         self.panel_run = FoldPanel(self.holder, "ABLAUF")
+        self.panel_tracks = FoldPanel(self.holder, "BAHNEN")
         self._fill_view_panel(self.panel_view.body)
         self._fill_run_panel(self.panel_run.body)
+        self._refresh_track_list()
         self._place_panels()
 
     def _place_panels(self):
         self.panel_view.place(relx=1.0, rely=0.0, x=-12, y=12, anchor="ne")
         self.panel_run.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+        self.panel_tracks.place(relx=0.0, rely=0.0, x=12, y=12, anchor="nw")
+
+    def _refresh_track_list(self):
+        """Liste im Fenster BAHNEN neu aufbauen.
+
+        Je Bahn eine Zeile: Farbfeld (Klick waehlt die Farbe), Sichtbarkeit,
+        Auswahl als aktive Bahn, Entfernen. Darunter klein die Kennwerte,
+        damit sich die Bahnen schon in der Liste vergleichen lassen.
+        """
+        body = self.panel_tracks.body
+        for child in body.winfo_children():
+            child.destroy()
+        if not self.entries:
+            ttk.Label(body, text="keine Bahn geladen", style="Muted.TLabel").pack(
+                anchor="w")
+            return
+
+        active = self._active_entry()
+        self.active_var.set(self.entries.index(active) if active else 0)
+        for index, entry in enumerate(self.entries):
+            track = entry.track
+            row = tk.Frame(body, background=SURFACE)
+            row.pack(fill="x", pady=(0 if index == 0 else 6, 0))
+            tk.Button(row, text="", width=2, relief="flat", bd=0, cursor="hand2",
+                      background=entry.colour, activebackground=entry.colour,
+                      highlightthickness=0,
+                      command=lambda e=entry: self._pick_track_colour(e)).pack(
+                side="left", padx=(0, 6))
+            visible = tk.BooleanVar(value=entry.visible)
+            ttk.Checkbutton(row, variable=visible,
+                            command=lambda e=entry, v=visible:
+                            self._set_visible(e, v.get())).pack(side="left")
+            name = entry.name if len(entry.name) <= 30 else entry.name[:28] + ".."
+            ttk.Radiobutton(row, text=name, variable=self.active_var, value=index,
+                            style=("Active.TRadiobutton" if entry is active
+                                   else "TRadiobutton"),
+                            command=lambda e=entry: self._set_active(e)).pack(
+                side="left")
+            tk.Button(row, text="×", relief="flat", bd=0, cursor="hand2",
+                      background=SURFACE, foreground=MUTED,
+                      activebackground=BUTTON_HOVER, highlightthickness=0,
+                      font=("TkDefaultFont", 10, "bold"),
+                      command=lambda e=entry: self._remove(e)).pack(side="right")
+            stats = (f"{len(track)} Pkt   {track.duration:.2f} s   "
+                     f"{track.length * 1000.0:.1f} mm   "
+                     f"vmax {track.v_max * 1000.0:.0f} mm/s")
+            tk.Label(body, text=stats, background=SURFACE, foreground=FAINT,
+                     font=("TkFixedFont", 8)).pack(anchor="w", padx=(28, 0))
 
     def _fill_view_panel(self, body):
         def check(text, variable):
@@ -1063,6 +1162,7 @@ class BahnViewer(tk.Tk):
         # Schalter stehen, aber wirkungslos; der Fuss sagt warum.
         check("Modell", self.show_model)
         check("Dreibein je Frame", self.model_triads)
+        check("Modell aller Bahnen", self.all_models)
         check("Modell als Schatten", self.show_ghosts)
         self._slider_row(body, "Schatten alle n", self.ghost_every, 5, 300)
 
@@ -1074,6 +1174,7 @@ class BahnViewer(tk.Tk):
         colour.pack(fill="x", pady=(2, 6))
         colour.bind("<<ComboboxSelected>>", lambda e: self._redraw())
 
+        check("Bahnnamen", self.show_names)
         check("Bodengitter", self.show_grid)
         check("Raeume", self.show_rooms)
 
@@ -1235,6 +1336,7 @@ class BahnViewer(tk.Tk):
         else:
             self.panel_view.place_forget()
             self.panel_run.place_forget()
+            self.panel_tracks.place_forget()
 
     # ----------------------------------------------------------------------
     # Datei
@@ -1247,11 +1349,37 @@ class BahnViewer(tk.Tk):
         if path:
             self._load(path)
 
-    def _reload(self):
-        if self.track:
-            self._load(self.track.path)
+    def _choose_add(self):
+        """Eine oder mehrere Dateien zu den geladenen Bahnen dazunehmen."""
+        paths = filedialog.askopenfilenames(
+            title="Bahn-CSV hinzufuegen",
+            filetypes=[("CSV", "*.csv"), ("Alle Dateien", "*.*")])
+        for path in paths or ():
+            self._load(path, add=True)
 
-    def _load(self, path):
+    def _reload(self):
+        """Alle Bahnen neu einlesen. Farbe, Sichtbarkeit und Auswahl bleiben."""
+        if not self.entries:
+            return
+        active = self._active_entry()
+        for entry in self.entries:
+            try:
+                entry.track = Track.load(entry.track.path)
+            except (OSError, ValueError) as exc:
+                messagebox.showerror("Neu laden", f"{entry.track.path}\n\n{exc}")
+        if active:
+            self.track = active.track
+            self.marker = int(clamp(self.marker, 0, len(self.track) - 1))
+            self.marker_scale.configure(to=max(0, len(self.track) - 1))
+            self.marker_scale.set(self.marker)
+        self._refresh_track_list()
+        self._update_file_label()
+        self._update_info()
+        self._redraw()
+
+    def _load(self, path, add=False):
+        """Bahn laden. Ohne `add` ersetzt sie alle bisherigen, mit `add` kommt
+        sie dazu. In beiden Faellen wird sie die aktive Bahn."""
         try:
             track = Track.load(path)
         except (OSError, ValueError) as exc:
@@ -1261,18 +1389,116 @@ class BahnViewer(tk.Tk):
             messagebox.showwarning("Laden", "Die Datei enthaelt keine Punkte.")
             return
 
+        if not add:
+            self.entries = []
+        same = next((e for e in self.entries
+                     if os.path.abspath(e.track.path) == os.path.abspath(path)),
+                    None)
+        if same:                                       # dieselbe Datei: ersetzen
+            same.track = track
+            entry = same
+        else:
+            entry = TrackEntry(track, self._next_colour())
+            self.entries.append(entry)
+
         self.track = track
         self.marker = 0
         self.playing = False
         self.play_button.configure(text="Start", background=OK_GREEN)
-        label = os.path.basename(path)
-        if track.robot_name:
-            label = f"{track.robot_name}   {label}"
-        self.file_var.set(label)
         self.marker_scale.configure(to=max(0, len(track) - 1))
         self.marker_scale.set(0)
+        self._refresh_track_list()
+        self._update_file_label()
         self._fit()
         self._update_info()
+
+    def _next_colour(self):
+        used = {e.colour for e in self.entries}
+        for colour in TRACK_COLORS:
+            if colour not in used:
+                return colour
+        return TRACK_COLORS[len(self.entries) % len(TRACK_COLORS)]
+
+    def _update_file_label(self):
+        if not self.track:
+            self.file_var.set("keine Datei geladen")
+            return
+        label = os.path.basename(self.track.path)
+        if self.track.robot_name:
+            label = f"{self.track.robot_name}   {label}"
+        if len(self.entries) > 1:
+            label += f"   (+{len(self.entries) - 1} weitere)"
+        self.file_var.set(label)
+
+    # -- Liste der Bahnen --------------------------------------------------
+
+    def _active_entry(self):
+        return next((e for e in self.entries if e.track is self.track), None)
+
+    def _visible_entries(self):
+        return [e for e in self.entries if e.visible]
+
+    def _set_active(self, entry):
+        """Andere Bahn aktiv setzen. Der Marker bleibt an derselben Stelle im
+        Ablauf, er springt nicht an den Anfang."""
+        if entry.track is self.track:
+            return
+        index = self._index_for(entry.track) if self.track else 0
+        self.track = entry.track
+        self.marker = index
+        if self.playing:
+            self.play_from = (time.monotonic(), self.track.times[self.marker])
+        self.marker_scale.configure(to=max(0, len(self.track) - 1))
+        self.marker_scale.set(self.marker)
+        self._refresh_track_list()
+        self._update_file_label()
+        self._update_info()
+        self._redraw()
+
+    def _set_visible(self, entry, visible):
+        entry.visible = visible
+        self._redraw()
+
+    def _pick_track_colour(self, entry):
+        chosen = colorchooser.askcolor(color=entry.colour, parent=self)
+        if chosen and chosen[1]:
+            entry.colour = chosen[1]
+            self._refresh_track_list()
+            self._redraw()
+
+    def _remove(self, entry):
+        was_active = entry.track is self.track
+        self.entries.remove(entry)
+        if was_active:
+            self.playing = False
+            self.play_button.configure(text="Start", background=OK_GREEN)
+            self.track = self.entries[0].track if self.entries else None
+            self.marker = 0
+            self.marker_scale.configure(
+                to=max(0, len(self.track) - 1) if self.track else 0)
+            self.marker_scale.set(0)
+        self._refresh_track_list()
+        self._update_file_label()
+        self._update_info()
+        self._redraw()
+
+    def _index_for(self, track):
+        """Abtastpunkt einer Bahn zur aktuellen Stelle der aktiven Bahn.
+
+        Im zeitlichen Ablauf gilt dieselbe verstrichene Zeit seit Bahnbeginn,
+        sonst derselbe Anteil der Punkte. Ist eine Bahn kuerzer, bleibt ihr
+        Marker am Ende stehen.
+        """
+        active = self.track
+        if track is active or active is None:
+            return self.marker
+        if self.time_mode.get():
+            elapsed = active.times[self.marker] - active.times[0]
+            index = bisect.bisect_right(track.times, track.times[0] + elapsed) - 1
+        else:
+            share = self.marker / max(1, len(active) - 1)
+            index = int(round(share * (len(track) - 1)))
+        return int(clamp(index, 0, len(track) - 1))
 
     def _update_info(self):
         if not self.track:
@@ -1331,15 +1557,16 @@ class BahnViewer(tk.Tk):
         self._redraw()
 
     def _fit(self):
-        """Kamera auf Bahn und Raeume einpassen."""
+        """Kamera auf alle sichtbaren Bahnen und Raeume einpassen."""
         boxes = []
-        if self.track:
+        for entry in self._visible_entries():
+            track = entry.track
             # Mit Modell die Huellbox ueber alle Frames, sonst steht der
             # Roboter halb ausserhalb des Bildes.
-            if self.show_model.get() and self.track.has_model:
-                boxes.append((self.track.model_lo, self.track.model_hi))
+            if self.show_model.get() and track.has_model:
+                boxes.append((track.model_lo, track.model_hi))
             else:
-                boxes.append((self.track.lo, self.track.hi))
+                boxes.append((track.lo, track.hi))
         boxes.extend((room.lo, room.hi) for room in self.rooms if room.visible)
         if not boxes:
             self.cam.center = [0.0, 0.0, 0.0]
@@ -1445,20 +1672,47 @@ class BahnViewer(tk.Tk):
             items += self._grid_items()
         items += self._axis_items()
 
-        if self.track:
-            if not fast and self.show_ghosts.get() and self.track.has_model:
+        visible = self._visible_entries()
+        if visible:
+            self._range = self._colour_range(visible)
+            active = self._active_entry()
+            # Die aktive Bahn zuletzt, damit sie oben liegt.
+            if active in visible:
+                visible = [e for e in visible if e is not active] + [active]
+            else:
+                active = None
+            if active and not fast and self.show_ghosts.get() \
+                    and active.track.has_model:
                 items += self._ghost_items()
-            items += self._path_items(fast)
+            for entry in visible:
+                items += self._path_items(fast, entry)
             if not fast:
-                if self.show_points.get():
-                    items += self._point_items()
-                if self.show_triads.get():
-                    items += self._triad_items()
-            if self.show_model.get() and self.track.has_model:
-                items += self._model_items(self.marker, fast)
-            items += self._marker_items()
+                for entry in visible:
+                    if self.show_points.get():
+                        items += self._point_items(entry)
+                    if self.show_triads.get():
+                        items += self._triad_items(entry)
+            if self.show_model.get():
+                for entry in visible:
+                    if not entry.track.has_model:
+                        continue
+                    if entry is active:
+                        items += self._model_items(self.marker, fast)
+                    elif self.all_models.get():
+                        items += self._model_items(
+                            self._index_for(entry.track), True,
+                            colour=entry.colour, width=2 * self._px,
+                            track=entry.track)
+            for entry in visible:
+                items += self._marker_items(entry, entry is active)
+            if self.show_names.get() and len(self.entries) > 1:
+                items += self._name_items(visible)
             if not fast and self.colour_mode.get() != "einfarbig":
                 items += self._legend_items(width, height)
+        elif self.entries:
+            items.append(("text", width * 0.5, height * 0.5,
+                          "alle Bahnen ausgeblendet", FAINT, "center",
+                          int(12 * self._px), False))
         else:
             items.append(("text", width * 0.5, height * 0.5,
                           "CSV ueber die Toolbar laden", FAINT, "center",
@@ -1469,8 +1723,10 @@ class BahnViewer(tk.Tk):
 
     def _grid_extent(self):
         """Bereich und Rastermass fuer das Bodengitter in der Ebene Z = 0."""
-        if self.track:
-            lo, hi = self.track.lo, self.track.hi
+        tracks = [e.track for e in self._visible_entries()]
+        if tracks:
+            lo = [min(t.lo[i] for t in tracks) for i in range(3)]
+            hi = [max(t.hi[i] for t in tracks) for i in range(3)]
             extent = max(hi[0] - lo[0], hi[1] - lo[1], 0.05)
             cx = (lo[0] + hi[0]) * 0.5
             cy = (lo[1] + hi[1]) * 0.5
@@ -1518,27 +1774,49 @@ class BahnViewer(tk.Tk):
 
     # -- Bahn --------------------------------------------------------------
 
-    def _visible_range(self):
+    def _visible_range(self, track=None):
         """Bis wohin gezeichnet wird. Mit `trail_only` nur bis zum Marker."""
-        end = self.marker + 1 if self.trail_only.get() else len(self.track)
+        track = track or self.track
+        end = self._index_for(track) + 1 if self.trail_only.get() else len(track)
         return max(end, 2)
 
-    def _fraction(self, index):
-        """Wert 0..1 fuer die Einfaerbung des Punktes."""
-        track = self.track
+    def _colour_range(self, entries):
+        """Gemeinsame Skala der Einfaerbung ueber alle sichtbaren Bahnen.
+
+        Je Bahn eine eigene Skala saehe bunter aus, waere aber nicht zu
+        vergleichen: dasselbe Gelb hiesse in jeder Bahn etwas anderes.
+        Rueckgabe (unten, oben, gekappt).
+        """
+        tracks = [e.track for e in entries]
         mode = self.colour_mode.get()
         if mode == "Geschwindigkeit":
-            span = track.v_hi - track.v_lo
-            return 0.5 if span <= 1e-12 else (track.speeds[index] - track.v_lo) / span
+            low = min(t.v_lo for t in tracks)
+            high = max(t.v_hi for t in tracks)
+            return low, high, any(t.v_max > high * 1.05 for t in tracks)
         if mode == "Zeit":
-            span = track.duration
-            return 0.5 if span <= 1e-9 else (track.times[index] - track.times[0]) / span
+            return 0.0, max(t.duration for t in tracks), False
         if mode == "Hoehe Z":
-            span = track.hi[2] - track.lo[2]
-            return 0.5 if span <= 1e-12 else (track.points[index][2] - track.lo[2]) / span
-        return 0.0
+            return (min(t.lo[2] for t in tracks), max(t.hi[2] for t in tracks),
+                    False)
+        return 0.0, 0.0, False
 
-    def _path_items(self, fast):
+    def _fraction(self, index, track=None):
+        """Wert 0..1 fuer die Einfaerbung des Punktes."""
+        track = track or self.track
+        low, high, _clipped = self._range
+        span = high - low
+        mode = self.colour_mode.get()
+        if mode == "Geschwindigkeit":
+            value = track.speeds[index]
+        elif mode == "Zeit":
+            value = track.times[index] - track.times[0]
+        elif mode == "Hoehe Z":
+            value = track.points[index][2]
+        else:
+            return 0.0
+        return 0.5 if span <= 1e-12 else (value - low) / span
+
+    def _path_items(self, fast, entry):
         """Bahnlinie. Bei Einfaerbung wird in Farbstufen zusammengefasst.
 
         Ein Canvas-Linienzug kann nur eine Farbe haben. Statt je Abschnitt ein
@@ -1548,8 +1826,9 @@ class BahnViewer(tk.Tk):
         """
         if not self.show_line.get():
             return []
-        end = self._visible_range()
-        points = self.track.points[:end]
+        track = entry.track
+        end = self._visible_range(track)
+        points = track.points[:end]
         step = 1
         if fast and len(points) > FAST_MAX_POINTS:
             step = len(points) // FAST_MAX_POINTS + 1
@@ -1565,10 +1844,11 @@ class BahnViewer(tk.Tk):
             flat = []
             for x, y in screen:
                 flat += [x, y]
-            return [("line", flat, PATH, width, None)]
+            return [("line", flat, entry.colour, width, None)]
 
-        buckets = [min(SPEED_BUCKETS - 1,
-                       int(self._fraction(i) * SPEED_BUCKETS)) for i in indices]
+        buckets = [max(0, min(SPEED_BUCKETS - 1,
+                              int(self._fraction(i, track) * SPEED_BUCKETS)))
+                   for i in indices]
         items = []
         run_start = 0
         for position in range(1, len(indices)):
@@ -1584,34 +1864,38 @@ class BahnViewer(tk.Tk):
                 run_start = position - 1           # ein Punkt Ueberlappung, keine Luecke
         return items
 
-    def _point_items(self):
-        end = self._visible_range()
+    def _point_items(self, entry):
+        track = entry.track
+        end = self._visible_range(track)
         count = end
         step = max(1, count // POINT_BUDGET + (1 if count > POINT_BUDGET else 0))
         indices = list(range(0, end, step))
-        screen = self.cam.project_many([self.track.points[i] for i in indices])
+        screen = self.cam.project_many([track.points[i] for i in indices])
         radius = max(1, self.point_size.get()) * self._px
         single = self.colour_mode.get() == "einfarbig"
+        # Eine einzelne Bahn behaelt das dunklere Punktblau von frueher.
+        plain = POINT if len(self.entries) == 1 else entry.colour
         return [("oval", x, y, radius,
-                 POINT if single else ramp_colour(self._fraction(i)), "")
+                 plain if single else ramp_colour(self._fraction(i, track)), "")
                 for (x, y), i in zip(screen, indices)]
 
-    def _triad_items(self):
+    def _triad_items(self, entry):
         """Dreibein an jedem n-ten Punkt. Laenge in Pixeln, also zoomfest."""
-        if not self.track.angles_known:
+        track = entry.track
+        if not track.angles_known:
             return []                                  # keine Lage, kein Dreibein
-        end = self._visible_range()
+        end = self._visible_range(track)
         every = max(1, self.triad_every.get())
         length = self.triad_size.get() * self._px / self.cam.scale   # px -> m
         items = []
         for index in range(0, end, every):
-            items += self._triad_at(index, length, self._px)
+            items += self._triad_at(index, length, self._px, track)
         return items
 
-    def _triad_at(self, index, length, width):
-        base = self.track.points[index]
-        columns = rotation_from_abc(self.track.angles[index],
-                                    self.track.achsen)
+    def _triad_at(self, index, length, width, track=None):
+        track = track or self.track
+        base = track.points[index]
+        columns = rotation_from_abc(track.angles[index], track.achsen)
         origin = self.cam.project(base)
         items = []
         for column, colour in zip(columns, (AXIS_X, AXIS_Y, AXIS_Z)):
@@ -1623,7 +1907,7 @@ class BahnViewer(tk.Tk):
                           width, None))
         return items
 
-    def _model_items(self, index, fast, colour=None, width=None):
+    def _model_items(self, index, fast, colour=None, width=None, track=None):
         """Das kinematische Modell an einem Abtastpunkt.
 
         Gezeichnet werden die Verbindungen entlang der Kette und je Frame ein
@@ -1631,7 +1915,7 @@ class BahnViewer(tk.Tk):
         TCP vorbehalten: hingen sie an jedem Frame, waere im Bild nicht mehr zu
         erkennen, welche Kurve die eigentliche Bahn ist.
         """
-        track = self.track
+        track = track or self.track
         px = self._px
         positions = track.frame_points(index)
         screen = self.cam.project_many(positions)
@@ -1651,13 +1935,14 @@ class BahnViewer(tk.Tk):
             if self.model_triads.get() and not fast:
                 length = self.triad_size.get() * 0.7 * px / self.cam.scale
                 for frame in range(len(track.frame_names)):
-                    items += self._frame_triad(index, frame, length, px)
+                    items += self._frame_triad(index, frame, length, px, track)
         return items
 
-    def _frame_triad(self, index, frame, length, width):
+    def _frame_triad(self, index, frame, length, width, track=None):
         """Dreibein eines beliebigen Frames, nicht nur des TCP."""
-        base, abc = self.track.frame_pose(index, frame)
-        columns = rotation_from_abc(abc, self.track.achsen)
+        track = track or self.track
+        base, abc = track.frame_pose(index, frame)
+        columns = rotation_from_abc(abc, track.achsen)
         origin = self.cam.project(base)
         items = []
         for column, colour in zip(columns, (AXIS_X, AXIS_Y, AXIS_Z)):
@@ -1685,32 +1970,51 @@ class BahnViewer(tk.Tk):
                                        width=1.5 * self._px)
         return items
 
-    def _marker_items(self):
-        """Aktueller Punkt, sein Dreibein und ein Lot auf die Bodenebene."""
-        point = self.track.points[self.marker]
+    def _marker_items(self, entry=None, active=True):
+        """Aktueller Punkt, sein Dreibein und ein Lot auf die Bodenebene.
+
+        Der Marker der aktiven Bahn ist rot und etwas groesser, die der
+        uebrigen tragen die Farbe ihrer Bahn.
+        """
+        track = entry.track if entry else self.track
+        index = self._index_for(track)
+        point = track.points[index]
         sx, sy = self.cam.project(point)
         foot = self.cam.project((point[0], point[1], 0.0))
         items = [("line", [sx, sy, foot[0], foot[1]], FAINT, self._px, (2, 3)),
                  ("oval", foot[0], foot[1], 2 * self._px, FAINT, "")]
-        items += self._triad_at(
-            self.marker,
-            self.triad_size.get() * 1.4 * self._px / self.cam.scale, 2 * self._px)
-        items.append(("oval", sx, sy,
-                      max(4, self.point_size.get() + 2) * self._px,
-                      MARKER, "#ffffff"))
+        if track.angles_known:
+            factor = 1.4 if active else 1.0
+            items += self._triad_at(
+                index, self.triad_size.get() * factor * self._px / self.cam.scale,
+                (2 if active else 1.5) * self._px, track)
+        radius = max(4, self.point_size.get() + 2) * self._px
+        items.append(("oval", sx, sy, radius if active else radius * 0.8,
+                      MARKER if active or entry is None else entry.colour,
+                      "#ffffff"))
+        return items
+
+    def _name_items(self, entries):
+        """Dateiname am Anfang jeder Bahn, in ihrer Farbe."""
+        items = []
+        for entry in entries:
+            sx, sy = self.cam.project(entry.track.points[0])
+            name = os.path.splitext(entry.name)[0]
+            items.append(("oval", sx, sy, 3 * self._px, entry.colour, "#ffffff"))
+            items.append(("text", sx + 6 * self._px, sy - 4 * self._px, name,
+                          entry.colour, "sw", int(9 * self._px), True))
         return items
 
     def _legend_items(self, width, height):
         """Farbskala unten links, damit die Einfaerbung ablesbar bleibt."""
         mode = self.colour_mode.get()
-        clipped = False
+        low, high, clipped = self._range
         if mode == "Geschwindigkeit":
-            low, high, unit = self.track.v_lo * 1000.0, self.track.v_hi * 1000.0, "mm/s"
-            clipped = self.track.v_max > self.track.v_hi * 1.05
+            low, high, unit = low * 1000.0, high * 1000.0, "mm/s"
         elif mode == "Zeit":
-            low, high, unit = 0.0, self.track.duration, "s"
+            unit = "s"
         else:
-            low, high, unit = self.track.lo[2], self.track.hi[2], "m"
+            unit = "m"
 
         px = self._px
         x0, y0 = 16 * px, height - 96 * px
@@ -2076,7 +2380,8 @@ def pruefen(path):
 
 def main():
     parser = argparse.ArgumentParser(description="Bahn-CSV im 3D-Raum ansehen")
-    parser.add_argument("csv", nargs="?", help="Aufzeichnung des Bahnrekorders")
+    parser.add_argument("csv", nargs="*",
+                        help="Aufzeichnung(en) des Bahnrekorders")
     parser.add_argument("--pruefen", action="store_true",
                         help="nur einlesen und berichten, kein Fenster")
     args, _ = parser.parse_known_args()
@@ -2085,7 +2390,7 @@ def main():
         if not args.csv:
             print("--pruefen braucht eine Datei")
             return 2
-        return pruefen(args.csv)
+        return max(pruefen(path) for path in args.csv)
 
     app = BahnViewer(args.csv)
     app.mainloop()

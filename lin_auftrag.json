@@ -1,0 +1,115 @@
+{
+ "stand": 1,
+ "wrapper": "/home/fwohlfeil/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper",
+ "params_datei": "/tmp/urdf_gui_moveit_ioyd4psv/move_group.yaml",
+ "gruppe": "manipulator",
+ "tip": "tcp11",
+ "gelenke": [
+  "joint1",
+  "joint2",
+  "joint3",
+  "joint4",
+  "joint5",
+  "joint7"
+ ],
+ "start": {
+  "joint1": 0.0,
+  "joint2": 0.0,
+  "joint3": 0.0,
+  "joint4": 0.0,
+  "joint5": 0.0,
+  "joint6": 0.0,
+  "joint7": 0.0
+ },
+ "namen": [
+  "Start",
+  "P1",
+  "P2",
+  "P3"
+ ],
+ "wegpunkte": [
+  [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  [
+   -0.1283379471239571,
+   0.011126839829819593,
+   -0.01178275727119254,
+   -0.050886476491385904,
+   0.11205496569800974,
+   0.050928619944926735
+  ],
+  [
+   -0.16071664187287468,
+   -0.28018340246927687,
+   0.2654409580149229,
+   -0.14836841174600762,
+   0.14093670567821695,
+   0.14955566795734723
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ ],
+ "abschnitte": [
+  [
+   0,
+   2
+  ],
+  [
+   2,
+   3
+  ]
+ ],
+ "velocity_scaling": 0.2,
+ "acceleration_scaling": 1.0,
+ "resample_dt": 0.01,
+ "rundung_translation_m": 0.05,
+ "rundung_rotation_rad": 0.1,
+ "grenzen": {
+  "min_position": [
+   -3.14159,
+   -1.5708,
+   -1.5708,
+   -3.14159,
+   -3.14159,
+   -3.14159
+  ],
+  "max_position": [
+   3.14159,
+   1.5708,
+   1.5708,
+   3.14159,
+   3.14159,
+   3.14159
+  ],
+  "max_velocity": [
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0,
+   1.0
+  ],
+  "max_acceleration": [
+   2.0,
+   2.0,
+   2.0,
+   2.0,
+   2.0,
+   2.0
+  ]
+ },
+ "grenzen_hinweise": [],
+ "quelle": "intrinsic_lin_auftrag.py aus TOTG-Auftrag"
+}

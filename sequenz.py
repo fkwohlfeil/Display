@@ -69,7 +69,9 @@ Was hier geprueft wird und warum es hier steht
     ueberlappen: radius(i) + radius(i+1) muss kleiner sein als der Abstand
     zwischen Ziel i und Ziel i+1. MoveIt lehnt das ab, sagt aber nicht,
     welches Paar es reisst. Bei acht Punkten ist das der Unterschied
-    zwischen einer Meldung und einer Suche. Der letzte Punkt muss Radius
+    zwischen einer Meldung und einer Suche. Fuer Intrinsic ist das kein
+    Fehler (pruefe(kugeln_pruefen=False)): Intrinsic kappt den Radius auf
+    einen Teil der Strecke, statt abzulehnen. Der letzte Punkt muss Radius
     null haben -- ueberschliffen wird zum naechsten Punkt hin, und nach dem
     letzten kommt keiner.
 
@@ -318,13 +320,18 @@ class Folge:
 
     # -- Pruefen -----------------------------------------------------------
 
-    def pruefe(self, schritte=None):
+    def pruefe(self, schritte=None, kugeln_pruefen=True):
         """Alle Befunde zur Folge. Fehler zuerst gesammelt, nicht geworfen.
 
         Eine Ausnahme beim ersten Fehler waere bequem und fuer den, der die
         Liste eingibt, laestig: er bekaeme sieben Meldungen nacheinander
         statt einmal sieben. Gesammelt wird deshalb alles, was sich ohne
         MoveIt sagen laesst.
+
+        kugeln_pruefen=False: sich ueberlappende Ueberschleifkugeln sind kein
+        Fehler, sondern ein Hinweis. Fuer Verfahren, die den Radius selbst
+        auf einen Teil der Strecke kappen (Intrinsic), statt ihn wie Pilz
+        abzulehnen.
         """
         if schritte is None:
             schritte = self.aufloesen()
@@ -340,7 +347,7 @@ class Folge:
                 "ueberschliffen wird erst ab drei."))
 
         befunde.extend(self._pruefe_felder(schritte))
-        befunde.extend(self._pruefe_radien(schritte))
+        befunde.extend(self._pruefe_radien(schritte, kugeln_pruefen))
         return tuple(befunde)
 
     def _pruefe_felder(self, schritte):
@@ -405,7 +412,7 @@ class Folge:
                         stelle=schritt.index))
         return befunde
 
-    def _pruefe_radien(self, schritte):
+    def _pruefe_radien(self, schritte, kugeln_pruefen=True):
         """Die Bedingungen, die zwei Punkte zusammen betreffen.
 
         Der letzte Radius wird eigens geprueft und nicht stillschweigend auf
@@ -443,13 +450,22 @@ class Folge:
                 continue
 
             summe = eins.radius + zwei.radius
-            if summe >= weg:
+            if summe >= weg and kugeln_pruefen:
                 befunde.append(Befund(
                     FEHLER,
                     f"{eins.name} -> {zwei.name}: die Ueberschleifkugeln "
                     f"ueberlappen. {eins.radius:.4f} + {zwei.radius:.4f} = "
                     f"{summe:.4f} m, Abstand nur {weg:.4f} m. "
                     f"Zusammen unter {weg:.4f} m bleiben.",
+                    paar=paar))
+            elif summe >= weg:
+                befunde.append(Befund(
+                    HINWEIS,
+                    f"{eins.name} -> {zwei.name}: Radien {eins.radius:.4f} + "
+                    f"{zwei.radius:.4f} = {summe:.4f} m bei nur {weg:.4f} m "
+                    f"Abstand. Fuer dieses Verfahren kein Fehler: es kappt "
+                    f"den Radius selbst auf einen Teil der Strecke, der "
+                    f"eingetragene Wert wirkt dann nicht voll.",
                     paar=paar))
         return befunde
 
@@ -466,7 +482,7 @@ class Folge:
     # -- Nutzlast ----------------------------------------------------------
 
     def nutzlast(self, gruppe, start, toleranz, planungszeit=1.0,
-                 versuche=1, tag=None, tcp=None):
+                 versuche=1, tag=None, tcp=None, kugeln_pruefen=True):
         """Reine Zahlen und Zeichenketten fuer /plan_sequence_path.
 
         Gebaut wird hier, gesendet in der Bruecke. Der GUI-Faden baut keine
@@ -487,9 +503,13 @@ class Folge:
 
         Schlaegt das Planen eines einzigen Auftrags fehl, wird keiner der
         Auftraege ausgefuehrt. Die Folge ist ganz oder gar nicht.
+
+        kugeln_pruefen wie bei pruefe(). Muss zu dem passen, womit die Folge
+        vorher geprueft wurde -- sonst geht sie durch die Pruefung und
+        scheitert erst hier, nach der IK.
         """
         schritte = self.aufloesen()
-        befunde = self.pruefe(schritte)
+        befunde = self.pruefe(schritte, kugeln_pruefen=kugeln_pruefen)
         harte = tuple(b for b in befunde if b.stufe == FEHLER)
         if harte:
             raise ValueError("Folge traegt " + str(len(harte))

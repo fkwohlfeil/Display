@@ -105,6 +105,24 @@ KINEMATICS_FIELDS = [
     ("kinematics_solver_search_resolution", "Suchschrittweite",   "rad", 0.005),
 ]
 
+# Parameter des KDL-Plugins, abgeschrieben aus kdl_kinematics_parameters.hpp
+# (moveit_kinematics 2.12.4, Jazzy) samt Standardwerten. Sie stehen dort
+# unter robot_description_kinematics.<gruppe>, neben kinematics_solver, und
+# werden nur geschrieben, wenn KDL der Solver ist -- die anderen Plugins
+# kennen sie nicht.
+#
+# max_solver_iterations ist dort int64. Es muss als Ganzzahl in die Datei:
+# "500.0" deklariert rclcpp als double, und das Plugin bricht beim Laden ab
+# (derselbe Fall wie in yaml_scalar, nur andersherum).
+KDL_SOLVER = KINEMATICS_SOLVERS[0]
+KDL_FIELDS = [
+    ("max_solver_iterations",   "Iterationen je Versuch", "",  500),
+    ("epsilon",                 "Konvergenzschwelle",     "",  1e-5),
+    ("orientation_vs_position", "Gewicht Drehung : Lage", "",  1.0),
+]
+KDL_INT_KEYS = ("max_solver_iterations",)
+KDL_POSITION_ONLY_DEFAULT = False
+
 # Werte, die pro Auftrag in den MotionPlanRequest wandern. Sie brauchen
 # keinen Neustart, deshalb stehen sie getrennt von allem anderen.
 PLAN_FIELDS = [
@@ -149,6 +167,12 @@ def yaml_scalar(value):
         # Grund, warum eine Zahl und ihre Schreibweise nicht dasselbe sind.
         if not any(c in text for c in ".eEn"):
             text += ".0"
+        # Dasselbe mit Exponent: "1e-05" liest rclcpp als Zahl, PyYAML
+        # (YAML 1.1) aber als Text -- dort braucht die Mantisse einen Punkt.
+        # Ueber params_fuer_moveitpy kaeme der Wert so als String bei
+        # MoveItPy an. "1.0e-05" lesen beide als double.
+        if "e" in text and "." not in text:
+            text = text.replace("e", ".0e", 1)
         return text
     if isinstance(value, int):
         return str(value)
@@ -225,6 +249,7 @@ class MoveItConfig:
         limits      Achsgrenzen, werden beim Start gelesen
         cartesian   Bahngrenzen fuer Pilz, werden beim Start gelesen
         kinematics  Solver und dessen Parameter, wird beim Start gelesen
+                    (dazu kdl und kdl_position_only, nur fuer KDL)
 
     Nur die erste Gruppe kommt ohne Neustart aus. Genau diese Unterscheidung
     zeigt die Oberflaeche dem Bediener an.
@@ -243,6 +268,8 @@ class MoveItConfig:
         self.planner = {key: default
                         for key, _l, _u, default in PLANNER_FIELDS}
         self.solver = KINEMATICS_SOLVERS[0]
+        self.kdl = {key: default for key, _l, _u, default in KDL_FIELDS}
+        self.kdl_position_only = KDL_POSITION_ONLY_DEFAULT
         self.use_ruckig = True
         # Kollisionspruefung der Bahn. An heisst: MoveIt prueft Startzustand
         # und jeden Stuetzpunkt gegen die Planungsszene und wirft die ganze
@@ -320,6 +347,18 @@ class MoveItConfig:
                 out.append(f"{pad}  max_deceleration: {yaml_scalar(float(value))}")
         return "\n".join(out)
 
+    def kdl_yaml(self, indent):
+        """Die Zeilen der KDL-Parameter. Ganzzahlen bleiben Ganzzahlen."""
+        pad = " " * indent
+        out = []
+        for key, _label, _unit, _default in KDL_FIELDS:
+            value = self.kdl[key]
+            value = int(value) if key in KDL_INT_KEYS else float(value)
+            out.append(f"{pad}{key}: {yaml_scalar(value)}")
+        out.append(f"{pad}position_only_ik: "
+                   f"{yaml_scalar(bool(self.kdl_position_only))}")
+        return out
+
     def params_yaml(self, urdf_xml, srdf_xml):
         """Die vollstaendige Parameterdatei fuer move_group.
 
@@ -357,6 +396,8 @@ class MoveItConfig:
         for key, _label, _unit, _default in KINEMATICS_FIELDS:
             lines.append(f"        {key}: "
                          f"{yaml_scalar(float(self.kinematics[key]))}")
+        if self.solver == KDL_SOLVER:
+            lines += self.kdl_yaml(8)
 
         lines += [
             "    robot_description_planning:",
@@ -419,6 +460,9 @@ class MoveItConfig:
             parts.append(f"{key}:{self.cartesian[key]}")
         for key, _l, _u, _d in KINEMATICS_FIELDS:
             parts.append(f"{key}:{self.kinematics[key]}")
+        for key, _l, _u, _d in KDL_FIELDS:
+            parts.append(f"kdl.{key}:{self.kdl[key]}")
+        parts.append(f"kdl.position_only_ik:{self.kdl_position_only}")
         # CommandPlanner::initialize() laeuft genau einmal beim Hochfahren und
         # legt die Abtastzeit in den LimitsContainer jedes Loaders. Ein
         # spaeteres Setzen des Parameters aendert nur den Parameterwert, nicht

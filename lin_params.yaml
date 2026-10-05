@@ -1,0 +1,400 @@
+/**:
+  ros__parameters:
+    robot_description: |-
+      <robot name="my_robot">
+        <material name="red">
+          <color rgba="1 0 0 1" />
+        </material>
+        <material name="green">
+          <color rgba="0 1 0 1" />
+        </material>
+        <material name="blue">
+          <color rgba="0 0 1 1" />
+        </material>
+        <material name="yellow">
+          <color rgba="1 1 0 1" />
+        </material>
+        <material name="cyan">
+          <color rgba="0 1 1 1" />
+        </material>
+        <link name="base_link">
+          <visual>
+            <geometry>
+              <box size="0.4 0.4 0.05" />
+            </geometry>
+            <material name="base_link_material">
+              <color rgba="0.8627 0.1255 0.3765 1" />
+            </material>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+          </visual>
+          <collision>
+            <geometry>
+              <box size="0.2 0.2 0.05" />
+            </geometry>
+          </collision>
+          <inertial>
+            <mass value="50.0" />
+            <inertia ixx="2.21" iyy="2.21" izz="0.33" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_1">
+          <visual>
+            <origin xyz="0 0 0.3" rpy="0 0 0" />
+            <geometry>
+              <box size="0.4 0.4 0.7" />
+            </geometry>
+            <material name="green" />
+          </visual>
+          <collision>
+            <geometry>
+              <box size="0.2 0.2 0.7" />
+            </geometry>
+          </collision>
+          <inertial>
+            <mass value="50.0" />
+            <inertia ixx="2.21" iyy="2.21" izz="0.33" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_2">
+          <visual>
+            <origin xyz="0 0 0.75" rpy="0 0 0" />
+            <geometry>
+              <cylinder radius="0.1" length="1.4" />
+            </geometry>
+            <material name="link_2_material">
+              <color rgba="0 0 1 1" />
+            </material>
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.1" length="1.4" />
+            </geometry>
+            <origin xyz="0 0 0.75" rpy="0 0 0" />
+          </collision>
+          <inertial>
+            <mass value="20" />
+            <inertia ixx="3.47" iyy="3.47" izz="0.4" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_3">
+          <visual>
+            <origin xyz="0 0 0.15" rpy="0 0 0" />
+            <geometry>
+              <cylinder radius="0.085" length="0.3" />
+            </geometry>
+            <material name="link_3_material">
+              <color rgba="1 1 0 1" />
+            </material>
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.085" length="0.2" />
+            </geometry>
+            <origin xyz="0 0 0.35" rpy="0 0 0" />
+          </collision>
+          <inertial>
+            <mass value="15" />
+            <inertia ixx="0.72" iyy="0.72" izz="0.22" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_4">
+          <visual>
+            <origin xyz="0 0 0.4" rpy="0 0 0" />
+            <geometry>
+              <cylinder radius="0.065" length="0.8" />
+            </geometry>
+            <material name="cyan" />
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.065" length="0.8" />
+            </geometry>
+          </collision>
+          <inertial>
+            <mass value="8" />
+            <inertia ixx="0.46" iyy="0.46" izz="0.067" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_5">
+          <visual>
+            <origin xyz="0 0 0.2" rpy="0 0 0" />
+            <geometry>
+              <cylinder radius="0.06" length="0.4" />
+            </geometry>
+            <material name="red" />
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.06" length="0.4" />
+            </geometry>
+          </collision>
+          <inertial>
+            <mass value="8" />
+            <inertia ixx="0.46" iyy="0.46" izz="0.067" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_6">
+          <visual>
+            <origin xyz="0 0 0.2" rpy="0 0 0" />
+            <geometry>
+              <cylinder radius="0.06" length="0.4" />
+            </geometry>
+            <material name="yellow" />
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.06" length="0.4" />
+            </geometry>
+          </collision>
+          <inertial>
+            <mass value="8" />
+            <inertia ixx="0.46" iyy="0.46" izz="0.067" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <link name="link_7">
+          <visual>
+            <origin xyz="0 0 0.15" rpy="0 0 0" />
+            <geometry>
+              <cylinder radius="0.05" length="0.3" />
+            </geometry>
+            <material name="cyan" />
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.05" length="0.3" />
+            </geometry>
+          </collision>
+          <inertial>
+            <mass value="8" />
+            <inertia ixx="0.46" iyy="0.46" izz="0.067" ixy="0" ixz="0" iyz="0" />
+          </inertial>
+        </link>
+        <joint name="joint1" type="revolute">
+          <parent link="base_link" />
+          <child link="link_1" />
+          <origin xyz="0 0 0.05" rpy="0 0 0" />
+          <axis xyz="0 0 1" />
+          <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+        </joint>
+        <joint name="joint2" type="revolute">
+          <parent link="link_1" />
+          <child link="link_2" />
+          <origin xyz="0.1 0 0.6" rpy="0 0 0" />
+          <axis xyz="0 1 0" />
+          <limit lower="-1.5708" upper="1.5708" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+        </joint>
+        <joint name="joint3" type="revolute">
+          <parent link="link_2" />
+          <child link="link_3" />
+          <origin xyz="0.1 0 1.4" rpy="0 0 0" />
+          <axis xyz="0 1 0" />
+          <limit lower="-1.5708" upper="1.5708" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+        </joint>
+        <joint name="joint4" type="revolute">
+          <parent link="link10" />
+          <child link="link_4" />
+          <origin xyz="0 0 0.7" rpy="0 0 0" />
+          <axis xyz="0 0 1" />
+          <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+        </joint>
+        <joint name="joint5" type="revolute">
+          <parent link="link_4" />
+          <child link="link_5" />
+          <origin xyz="0 0 0.8" rpy="0 -0.6099925736 0" />
+          <axis xyz="0 0 1" />
+          <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+        </joint>
+        <joint name="joint6" type="revolute">
+          <parent link="link_5" />
+          <child link="link_6" />
+          <origin xyz="0 0 0.4" rpy="0 1.2200026 0" />
+          <axis xyz="0 0 1" />
+          <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+          <mimic joint="joint5" multiplier="-1" offset="0" />
+        </joint>
+        <joint name="joint7" type="revolute">
+          <parent link="link_6" />
+          <child link="link_7" />
+          <origin xyz="0 0 0.4" rpy="0 -0.6099925736 0" />
+          <axis xyz="0 0 1" />
+          <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.0" />
+          <dynamics damping="0.1" friction="0.01" />
+        </joint>
+        <link name="link_11">
+          <visual>
+            <geometry>
+              <box size="0.1 0.001 0.1" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="link_11_material">
+              <color rgba="1 0 1 1" />
+            </material>
+          </visual>
+          <collision>
+            <geometry>
+              <box size="0.001 0.001 0.001" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+          </collision>
+        </link>
+        <joint name="joint8" type="fixed">
+          <parent link="link_7" />
+          <child link="link_11" />
+          <origin xyz="0 0 0.35" rpy="1.570796327 0 -1.570796327" />
+        </joint>
+        <link name="link10">
+          <visual>
+            <geometry>
+              <cylinder radius="0.065" length="0.7" />
+            </geometry>
+            <origin xyz="0 0 0.35" rpy="0 0 0" />
+            <material name="link10_material">
+              <color rgba="0.6 0.6 0.6196 1" />
+            </material>
+          </visual>
+          <collision>
+            <geometry>
+              <cylinder radius="0.03" length="0.7" />
+            </geometry>
+            <origin xyz="0 0 0.35" rpy="0 0 0" />
+          </collision>
+        </link>
+        <joint name="joint9" type="fixed">
+          <parent link="link_3" />
+          <child link="link10" />
+          <origin xyz="0 0 0.2" rpy="0 1.570796327 0" />
+        </joint>
+        <link name="tcp11" />
+        <joint name="frame10" type="fixed">
+          <parent link="link_11" />
+          <child link="tcp11" />
+          <origin xyz="0 0.1 0.1" rpy="0 0 0" />
+        </joint>
+        <link name="Frame_Teil1" />
+        <joint name="frame11" type="fixed">
+          <parent link="Frame_Teil1" />
+          <child link="base_link" />
+          <origin xyz="0 0 0" rpy="0 0 1.570796327" />
+        </joint>
+      </robot>
+    robot_description_semantic: |-
+      <?xml version="1.0"?>
+      <robot name="my_robot">
+        <group name="manipulator">
+          <chain base_link="Frame_Teil1" tip_link="tcp11"/>
+        </group>
+        <group_state name="null" group="manipulator">
+          <joint name="joint1" value="0"/>
+          <joint name="joint2" value="0"/>
+          <joint name="joint3" value="0"/>
+          <joint name="joint4" value="0"/>
+          <joint name="joint5" value="0"/>
+          <joint name="joint7" value="0"/>
+        </group_state>
+        <disable_collisions link1="base_link" link2="link_1" reason="Adjacent"/>
+        <disable_collisions link1="link_1" link2="link_2" reason="Adjacent"/>
+        <disable_collisions link1="link_2" link2="link_3" reason="Adjacent"/>
+        <disable_collisions link1="link10" link2="link_4" reason="Adjacent"/>
+        <disable_collisions link1="link_4" link2="link_5" reason="Adjacent"/>
+        <disable_collisions link1="link_5" link2="link_6" reason="Adjacent"/>
+        <disable_collisions link1="link_6" link2="link_7" reason="Adjacent"/>
+        <disable_collisions link1="link_7" link2="link_11" reason="Adjacent"/>
+        <disable_collisions link1="link_3" link2="link10" reason="Adjacent"/>
+        <disable_collisions link1="link_11" link2="tcp11" reason="Adjacent"/>
+        <disable_collisions link1="Frame_Teil1" link2="base_link" reason="Adjacent"/>
+      </robot>
+    robot_description_kinematics:
+      manipulator:
+        kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
+        kinematics_solver_timeout: 0.05
+        kinematics_solver_search_resolution: 0.005
+    robot_description_planning:
+      joint_limits:
+        joint1:
+          has_velocity_limits: true
+          max_velocity: 1.0
+          has_acceleration_limits: true
+          max_acceleration: 2.0
+          has_jerk_limits: true
+          max_jerk: 20.0
+          has_deceleration_limits: true
+          max_deceleration: -2.0
+        joint2:
+          has_velocity_limits: true
+          max_velocity: 1.0
+          has_acceleration_limits: true
+          max_acceleration: 2.0
+          has_jerk_limits: true
+          max_jerk: 20.0
+          has_deceleration_limits: true
+          max_deceleration: -2.0
+        joint3:
+          has_velocity_limits: true
+          max_velocity: 1.0
+          has_acceleration_limits: true
+          max_acceleration: 2.0
+          has_jerk_limits: true
+          max_jerk: 20.0
+          has_deceleration_limits: true
+          max_deceleration: -2.0
+        joint4:
+          has_velocity_limits: true
+          max_velocity: 1.0
+          has_acceleration_limits: true
+          max_acceleration: 2.0
+          has_jerk_limits: true
+          max_jerk: 20.0
+          has_deceleration_limits: true
+          max_deceleration: -2.0
+        joint5:
+          has_velocity_limits: true
+          max_velocity: 1.0
+          has_acceleration_limits: true
+          max_acceleration: 2.0
+          has_jerk_limits: true
+          max_jerk: 20.0
+          has_deceleration_limits: true
+          max_deceleration: -2.0
+        joint7:
+          has_velocity_limits: true
+          max_velocity: 1.0
+          has_acceleration_limits: true
+          max_acceleration: 2.0
+          has_jerk_limits: true
+          max_jerk: 20.0
+          has_deceleration_limits: true
+          max_deceleration: -2.0
+      cartesian_limits:
+        max_trans_vel: 1.0
+        max_trans_acc: 2.25
+        max_trans_dec: -5.0
+        max_rot_vel: 1.57
+    planning_pipelines:
+      pipeline_names:
+      - pilz_industrial_motion_planner
+    default_planning_pipeline: pilz_industrial_motion_planner
+    pilz_industrial_motion_planner:
+      planning_plugins:
+      - pilz_industrial_motion_planner/CommandPlanner
+      request_adapters:
+      - default_planning_request_adapters/ResolveConstraintFrames
+      - default_planning_request_adapters/ValidateWorkspaceBounds
+      - default_planning_request_adapters/CheckStartStateBounds
+      response_adapters:
+      - default_planning_response_adapters/DisplayMotionPath
+      sampling_time: 0.1
+    capabilities: pilz_industrial_motion_planner/MoveGroupSequenceAction pilz_industrial_motion_planner/MoveGroupSequenceService
+    allow_trajectory_execution: false
+    moveit_manage_controllers: false
+    publish_planning_scene: true
+    publish_geometry_updates: true
+    publish_state_updates: true
+    publish_transforms_updates: true
+    planning_scene_monitor_options:
+      name: planning_scene_monitor_totg

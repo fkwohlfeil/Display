@@ -46,9 +46,18 @@ Was Intrinsic anders macht als Pilz und TOTG
     Override. Ein Geschwindigkeits- und ein Beschleunigungsfaktor fuer die
     ganze Bahn, wie bei TOTG.
 
-    Kein Ruck-Limit, keine TCP-Geschwindigkeitsgrenze (Intrinsic braeuchte
-    dafuer ein eigenes Kinematikmodell), keine Kollisionspruefung. Das steht
-    im Bericht und in der CSV.
+    Bahngrenzen. Wahlweise eine Obergrenze fuer die Geschwindigkeit des
+    Tip-Links in m/s (v_bahn) und fuer seine Beschleunigung in m/s^2
+    (a_bahn), fuer die ganze Bahn, LIN wie PTP, mal dem jeweiligen
+    Override. TOPP-RA bleibt zeitoptimal, nur mit diesen Grenzen mehr; wo
+    die Achsen strenger sind, wird es langsamer. Die Beschleunigung haelt
+    TOPP-RA an seinen Stuetzpunkten ein, nutzt sie je nach Richtung aber
+    nur zu 88,6 bis 100 % aus; zwischen den Stuetzpunkten kann die kubische
+    Interpolation darueber schwingen. Gemessen wird mit der FK von MoveIt,
+    Mimic-Gelenke eingeschlossen (siehe intrinsic_lin_rechner).
+
+    Kein Ruck-Limit, keine Grenze fuer die Drehung des Tips, keine
+    Kollisionspruefung. Das steht im Bericht und in der CSV.
 """
 
 import json
@@ -67,8 +76,18 @@ STAND = 1
 # als LIN fahren und lehnt den Auftrag deshalb ab. Seit 4 mit
 # "verschleifen" (Wechsel der Fahrart ohne Halt). Stand 3 hatte nur der
 # Rechner (Mimic-Patch) -- ein solcher Rechner muss diesen Auftrag ablehnen,
-# sonst hielte er an jedem Wechsel still an.
-AUFTRAG_STAND = 4
+# sonst hielte er an jedem Wechsel still an. Seit 5 mit "ast_folgen": ein
+# Rechner mit Stand 4 wuerde am anderen IK-Ast abbrechen. Seit 6 mit
+# "tcp_v_max" und "tcp_a_max": ein Rechner mit Stand 5 ueberginge die
+# Grenzen still.
+AUFTRAG_STAND = 6
+
+# Endet eine LIN-Kette in der Pose des Ziels, aber auf einem anderen IK-Ast
+# als dessen Achsziel, faehrt der Rechner mit der erreichten Stellung
+# weiter, statt abzubrechen. Das Achsziel wurde einzeln aufgeloest; die
+# Kette zeigt, welcher Ast mit LIN wirklich erreicht wird. Intrinsic selbst
+# bricht dort ab. Jeder Wechsel steht im Bericht.
+AST_FOLGEN = True
 
 # Fahrarten, die diese Rechnung kennt.
 FAHRARTEN = ("LIN", "PTP")
@@ -101,6 +120,30 @@ RUNDUNG_TRANS_OHNE_RADIUS = 0.001   # m
 RUNDUNG_ROT_MIN = 1.0e-6
 RUNDUNG_ROT_MAX = 3.14159
 
+# Seit dem Folgenfenster einstellbar: die beiden Gelenkraum-Werte, die eine
+# verschliffene LIN-Folge glaetten. Standard wie in Intrinsic.
+#
+#   gelenk_abtastung_rad  Abstand der Stuetzpunkte, wenn der dichte
+#                         LIN-Gelenkpfad neu abgetastet wird. Liegt eine Ecke
+#                         der Liste zwischen zwei Stuetzpunkten, ist sie weg.
+#   ueberschleifen_rad    Toleranz, mit der TOPP-RA an den inneren
+#                         Stuetzpunkten ueberschleift.
+#
+# Beide muss der Wrapper > 0 bekommen. Beim Ueberschleifen ist 1e-5 sein
+# Minimum (kMinimumLowLevelJointBlendingDeviationRad): exakt durch den Punkt.
+# Eine sehr kleine Abtastung ist erlaubt, kostet aber Punkte und Rechenzeit.
+GELENK_ABTASTUNG_STANDARD = 0.05    # rad, kDefaultJointSpaceUniform...Rad
+GELENK_ABTASTUNG_MIN = 1.0e-4
+GELENK_ABTASTUNG_MAX = 1.0
+UEBERSCHLEIFEN_MIN = 1.0e-5
+UEBERSCHLEIFEN_MAX = 3.14159
+
+# Bahngrenzen des Tip-Links. Leeres Feld: keine Grenze.
+TCP_V_MIN = 1.0e-4                  # m/s
+TCP_V_MAX = 10.0
+TCP_A_MIN = 1.0e-3                  # m/s^2
+TCP_A_MAX = 100.0
+
 # So lange darf der Rechner brauchen. MoveItPy faehrt hoch, und je
 # Abschnitt laufen zwei IK-Ketten ueber einige hundert Kurvenposen.
 FRIST_S = 300.0
@@ -110,20 +153,51 @@ FRIST_S = 300.0
 # Eingabe
 # ----------------------------------------------------------------------------
 
-def pruefe_parameter(rundung_rot, resample_dt):
+def bahngrenze_lesen(roh):
+    """Feld v_bahn oder a_bahn: None ohne Grenze (leer oder None), sonst die
+    Zahl. Wirft ValueError, wenn etwas drinsteht, das keine Zahl ist."""
+    if roh is None or str(roh).strip() == "":
+        return None
+    return float(roh)
+
+
+def pruefe_parameter(rundung_rot, resample_dt,
+                     ueberschleifen_rad=UEBERSCHLEIFEN_RAD,
+                     gelenk_abtastung_rad=GELENK_ABTASTUNG_STANDARD,
+                     tcp_v_max=None, tcp_a_max=None):
     """Befunde zu den Feldern im Folgenfenster."""
     befunde = []
-    try:
-        rot = float(rundung_rot)
-    except (TypeError, ValueError):
-        befunde.append(sequenz.Befund(
-            sequenz.FEHLER, f"rundung_rot {rundung_rot!r} ist keine Zahl"))
-        rot = None
-    if rot is not None and not RUNDUNG_ROT_MIN <= rot <= RUNDUNG_ROT_MAX:
-        befunde.append(sequenz.Befund(
-            sequenz.FEHLER,
-            f"rundung_rot {rot:g} rad liegt nicht in "
-            f"[{RUNDUNG_ROT_MIN:g}, {RUNDUNG_ROT_MAX:g}]"))
+    for name, roh, unten, oben, einheit in (
+            ("v_bahn", tcp_v_max, TCP_V_MIN, TCP_V_MAX, "m/s"),
+            ("a_bahn", tcp_a_max, TCP_A_MIN, TCP_A_MAX, "m/s^2")):
+        try:
+            wert = bahngrenze_lesen(roh)
+        except (TypeError, ValueError):
+            befunde.append(sequenz.Befund(
+                sequenz.FEHLER, f"{name} {roh!r} ist keine Zahl (leer: "
+                                f"keine Grenze)"))
+            continue
+        if wert is not None and not unten <= wert <= oben:
+            befunde.append(sequenz.Befund(
+                sequenz.FEHLER,
+                f"{name} {wert:g} {einheit} liegt nicht in [{unten:g}, "
+                f"{oben:g}] (leer: keine Grenze)"))
+    for name, roh, unten, oben in (
+            ("rundung_rot", rundung_rot, RUNDUNG_ROT_MIN, RUNDUNG_ROT_MAX),
+            ("ueberschleifen_rad", ueberschleifen_rad,
+             UEBERSCHLEIFEN_MIN, UEBERSCHLEIFEN_MAX),
+            ("gelenk_abtastung_rad", gelenk_abtastung_rad,
+             GELENK_ABTASTUNG_MIN, GELENK_ABTASTUNG_MAX)):
+        try:
+            wert = float(roh)
+        except (TypeError, ValueError):
+            befunde.append(sequenz.Befund(
+                sequenz.FEHLER, f"{name} {roh!r} ist keine Zahl"))
+            continue
+        if not unten <= wert <= oben:
+            befunde.append(sequenz.Befund(
+                sequenz.FEHLER,
+                f"{name} {wert:g} rad liegt nicht in [{unten:g}, {oben:g}]"))
     # resample_dt nach denselben Grenzen wie bei TOTG. path_tolerance wird
     # dort mitgeprueft; hier geht der Standardwert hinein, damit nur
     # Befunde zu resample_dt entstehen koennen.
@@ -134,7 +208,10 @@ def pruefe_parameter(rundung_rot, resample_dt):
 
 
 def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
-            wrapper=None, grenzen_lesen=None):
+            wrapper=None, grenzen_lesen=None,
+            ueberschleifen_rad=UEBERSCHLEIFEN_RAD,
+            gelenk_abtastung_rad=GELENK_ABTASTUNG_STANDARD,
+            tcp_v_max=None, tcp_a_max=None):
     """Auftrag fuer intrinsic_lin_rechner.py aus der Nutzlast der Folge.
 
     nutzlast: sequenz.Folge.nutzlast, alle Posten mit Achszielen. gelenke:
@@ -147,8 +224,17 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
 
     Liefert (auftrag, befunde). Traegt befunde einen Fehler, ist auftrag
     None -- ein halber Auftrag geht nicht hinaus.
+
+    ueberschleifen_rad und gelenk_abtastung_rad: die Gelenkraum-Werte aus
+    dem Folgenfenster, Standard wie in Intrinsic.
+
+    tcp_v_max, tcp_a_max: Bahngeschwindigkeit (m/s) und Bahnbeschleunigung
+    (m/s^2) des Tip-Links, None oder leer fuer keine Grenze. Nur gesetzt
+    gehen sie in den Auftrag.
     """
-    befunde = list(pruefe_parameter(rundung_rot, resample_dt))
+    befunde = list(pruefe_parameter(rundung_rot, resample_dt,
+                                    ueberschleifen_rad, gelenk_abtastung_rad,
+                                    tcp_v_max, tcp_a_max))
     gelenke = [str(name) for name in gelenke]
     posten = list(nutzlast.get("items") or [])
     wrapper = wrapper or wrapper_pfad()
@@ -232,6 +318,12 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
     if any(befund.stufe == sequenz.FEHLER for befund in befunde):
         return None, tuple(befunde)
 
+    # Ab hier sind die Felder geprueft; sonst waere oben abgebrochen worden.
+    ueberschleifen_rad = float(ueberschleifen_rad)
+    gelenk_abtastung_rad = float(gelenk_abtastung_rad)
+    tcp_v_max = bahngrenze_lesen(tcp_v_max)
+    tcp_a_max = bahngrenze_lesen(tcp_a_max)
+
     radien = [float(eintrag.get("blend_radius", 0.0)) for eintrag in posten]
     wechsel = [index + 1 for index in range(len(posten) - 1)
                if arten[index] != arten[index + 1]]
@@ -274,7 +366,7 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
         befunde.append(sequenz.Befund(
             sequenz.HINWEIS,
             f"Wechsel der Fahrart ueberschliffen im Gelenkraum mit "
-            f"{UEBERSCHLEIFEN_RAD:g} rad: "
+            f"{ueberschleifen_rad:g} rad: "
             + ", ".join(f"{namen[i]} ({arten[i - 1]} -> {arten[i]})"
                         for i in uebergaenge)
             + ". Wie in Intrinsic; der Radius der Zeile wirkt dort nicht als "
@@ -285,7 +377,9 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
             f"Verrundet mit {rundung_trans:g} m / {float(rundung_rot):g} rad: "
             + ", ".join(namen[i] for i in lin_rund)
             + ". Der Radius wirkt als Abstand im Kontrollpolygon des "
-              "B-Splines, nicht als Kugel wie bei Pilz."))
+              "B-Splines, nicht als Kugel wie bei Pilz. Danach glaettet der "
+              f"Gelenkraum: Abtastung {gelenk_abtastung_rad:g} rad, "
+              f"Ueberschleifen {ueberschleifen_rad:g} rad."))
     elif not ueber_null and "LIN" in arten:
         befunde.append(sequenz.Befund(
             sequenz.HINWEIS,
@@ -295,7 +389,7 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
     if ptp_rund:
         befunde.append(sequenz.Befund(
             sequenz.HINWEIS,
-            f"PTP ueberschliffen im Gelenkraum mit {UEBERSCHLEIFEN_RAD:g} "
+            f"PTP ueberschliffen im Gelenkraum mit {ueberschleifen_rad:g} "
             f"rad: " + ", ".join(namen[i] for i in ptp_rund)
             + ". Der Radius der Zeile wirkt dort nicht als Laenge."))
     for index in umkehr:
@@ -304,6 +398,23 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
             f"{namen[index]}: die Bahn kehrt dort im Gelenkraum um. "
             f"Angehalten wird trotz Radius {radien[index - 1]:g} m.",
             stelle=index))
+    teile = []
+    if tcp_v_max is not None:
+        teile.append(f"Geschwindigkeit hoechstens {tcp_v_max:g} m/s mal "
+                     f"Override {paare[0][0] * 100:g} % = "
+                     f"{tcp_v_max * paare[0][0]:g} m/s")
+    if tcp_a_max is not None:
+        teile.append(f"Beschleunigung hoechstens {tcp_a_max:g} m/s^2 mal "
+                     f"Override {paare[0][1] * 100:g} % = "
+                     f"{tcp_a_max * paare[0][1]:g} m/s^2 (je nach Richtung "
+                     f"zu 88,6 bis 100 % ausgenutzt)")
+    if teile:
+        befunde.append(sequenz.Befund(
+            sequenz.HINWEIS,
+            f"Bahngrenzen des Tip-Links {tip}: " + "; ".join(teile)
+            + ". Fuer LIN und PTP, gemessen mit der FK von MoveIt."
+            + ("" if "LIN" in arten else " MoveItPy faehrt dafuer auch bei "
+                                         "reinem PTP hoch.")))
 
     if any(befund.stufe == sequenz.FEHLER for befund in befunde):
         return None, tuple(befunde)
@@ -335,7 +446,9 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
         # Abschnittsgrenzen ohne Halt: dort werden die Nachbarabschnitte zu
         # einem Teilpfad verbunden.
         "verschleifen": list(uebergaenge),
-        "ueberschleifen_rad": UEBERSCHLEIFEN_RAD,
+        "ast_folgen": AST_FOLGEN,
+        "ueberschleifen_rad": ueberschleifen_rad,
+        "gelenk_abtastung_rad": gelenk_abtastung_rad,
         "umkehr": list(umkehr),
         "velocity_scaling": paare[0][0],
         "acceleration_scaling": paare[0][1],
@@ -344,6 +457,10 @@ def anfrage(nutzlast, gelenke, params_datei, tip, rundung_rot, resample_dt,
         "rundung_rotation_rad": float(rundung_rot),
         "grenzen": achsgrenzen,
     }
+    if tcp_v_max is not None:
+        auftrag["tcp_v_max"] = tcp_v_max
+    if tcp_a_max is not None:
+        auftrag["tcp_a_max"] = tcp_a_max
     return auftrag, tuple(befunde)
 
 
@@ -380,8 +497,24 @@ def antwort_lesen(text, gelenke):
     abgetastet = grenzpruefung.get("abgetastet") or {}
     abschnitte = daten.get("abschnitte") or []
     lin = daten.get("lin") or []
+    tcp = daten.get("tcp_pruefung") or {}
+    lin_vorgaben = daten.get("lin_vorgaben") or {}
     gelesen["intrinsic"] = dict(
         basis,
+        # Bahngrenzen: vorgegeben (None ohne) und gemessen.
+        tcp_v_max=lin_vorgaben.get("tcp_v_max"),
+        tcp_v_gemessen_max=tcp.get("v_max_m_s"),
+        tcp_v_faktor_max=tcp.get("v_faktor_max"),
+        tcp_v_eingehalten=tcp.get("v_eingehalten"),
+        tcp_massgeblich_proben=tcp.get("massgeblich_proben"),
+        tcp_proben=tcp.get("proben"),
+        tcp_a_max=lin_vorgaben.get("tcp_a_max"),
+        tcp_a_gemessen_max=tcp.get("a_max_m_s2"),
+        tcp_a_faktor_max=tcp.get("a_faktor_max"),
+        tcp_a_eingehalten=tcp.get("a_eingehalten"),
+        tcp_a_roh_max=tcp.get("a_roh_max_m_s2"),
+        tcp_a_roh_faktor_max=tcp.get("a_roh_faktor_max"),
+        tcp_a_roh_eingehalten=tcp.get("a_roh_eingehalten"),
         intrinsic_release=str(daten.get("intrinsic_release", "")),
         wrapper_stand=daten.get("stand"),
         rechner=str(daten.get("rechner", "")),
@@ -412,6 +545,9 @@ def antwort_lesen(text, gelenke):
         # Wechsel der Fahrart, an denen nicht angehalten wurde.
         verschliffen=[str(v.get("punkt")) for v in
                       daten.get("verschliffen") or []],
+        # Wegpunkte, an denen die LIN-Kette einem anderen IK-Ast folgte.
+        ast_gewechselt=[str(a.get("punkt")) for a in
+                        daten.get("ast_gewechselt") or []],
         verschliffen_sprung_max_rad=max(
             [float(v.get("sprung_rad") or 0.0) for v in
              daten.get("verschliffen") or []] or [0.0]),
@@ -430,14 +566,18 @@ def antwort_lesen(text, gelenke):
 # Kommentarzeilen in die CSV gehen.
 ZUSATZ_SCHLUESSEL = (
     "fahrarten", "verschliffen", "verschliffen_sprung_max_rad",
-    "rundung_translation_m", "rundung_rotation_rad",
-    "ueberschleifen_rad", "intrinsic_release",
+    "ast_gewechselt", "rundung_translation_m", "rundung_rotation_rad",
+    "ueberschleifen_rad", "gelenk_abtastung_rad", "intrinsic_release",
     "wrapper_stand", "toppra_iterationen", "v_faktor_max", "a_faktor_max",
     "grenzen_roh_eingehalten", "v_faktor_max_abgetastet",
     "a_faktor_max_abgetastet", "grenzen_abgetastet_eingehalten",
     "ik_aufrufe", "ik_sprung_max_rad", "ik_posenfehler_max_m",
     "ik_posenfehler_max_rad", "ziel_abweichung_max_rad",
-    "uebergang_max_rad", "ruck_begrenzt", "tcp_grenze", "kollision")
+    "uebergang_max_rad", "ruck_begrenzt", "tcp_grenze", "tcp_v_max",
+    "tcp_v_gemessen_max", "tcp_v_faktor_max", "tcp_v_eingehalten",
+    "tcp_a_max", "tcp_a_gemessen_max", "tcp_a_faktor_max",
+    "tcp_a_eingehalten", "tcp_a_roh_max", "tcp_a_roh_faktor_max",
+    "tcp_a_roh_eingehalten", "kollision")
 
 
 def zusatzzeilen(herkunft):

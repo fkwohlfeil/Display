@@ -1,26 +1,60 @@
 #!/usr/bin/env python3
 """URDF anzeigen, Achsen vorgeben, Vorwaertskinematik rechnen, TF senden.
 
+2.3 raeumt auf. Keine neue Funktion; was angezeigt wird, stimmt mit dem
+ueberein, was wirkt.
+
+    Karte BEWEGUNG. Sie zeigte beim Start 0.5 m/s und 2 m/s2, gerechnet
+    wurde mit 1.0 und 2.25 -- gespiegelt wurde erst beim ersten Uebernehmen
+    im Parameterfenster. Jetzt gleich nach dem Aufbau. Die Vorgaben kommen
+    aus CARTESIAN_FIELDS, Jerk ist weg (Pilz kennt keinen Bahnruck), die
+    Ueberschrift sagt "Neustart noetig". Dass die Bahnverzoegerung der
+    Beschleunigung folgt, bleibt -- steht aber im Protokoll.
+
+    Reiter Fahrt. goal_position_tol, max_step und jump_threshold gingen in
+    keinen Auftrag ein und sind entfernt (moveit_konfig Stand 2).
+    goal_orientation_tol heisst jetzt, was es ist: Zieltoleranz Achsen.
+
+    Punktfolge. sequenz.Folge.nutzlast lehnt eine Lage ohne Achswerte ab,
+    RosBridge._send_sequence nimmt nur noch Achsziele (ros_bruecke Stand 2).
+    Der Lage-Zweig dazwischen war seit 3.2 unerreichbar, und die beiden
+    Seiten sprachen verschiedene Schluessel.
+
+    Pfade. einstellungen.py (Stand 2) kennt keine absoluten Pfade mehr: URDF,
+    Sicherungen und Bahnen liegen neben dieser Datei, umlenkbar ueber
+    URDF_GUI_URDF, URDF_GUI_SICHERUNG und URDF_GUI_BAHNEN. Ohne Startargument
+    gilt damit bmKinematic.urdf wie im Launch-Skript. BAHN_VIEWER ist von
+    totg_prozess (Stand 2) dorthin gewandert und nennt bahn_viewer3.py
+    statt des nie vorhandenen bahn_viewer4.py.
+
 2.2 stellt der Punktfolge Intrinsic als drittes Verfahren zur Seite.
 
-    Im Folgenfenster steht neben Pilz und TOTG jetzt "Intrinsic". Gerechnet
-    wird kartesisch linear (LIN, Variante B): die verrundete kartesische
-    Kurve (CartesianPolylineBSplinesCurve), ihre Abtastung und TOPP-RA
-    kommen aus Intrinsic Core ueber intrinsic_toppra_wrapper, die
-    Rueckwaertskinematik aus MoveIt (moveit_py im Rechner) -- nie aus einer
-    zweiten Quelle.
+    Im Folgenfenster steht neben Pilz und TOTG jetzt "Intrinsic". Die
+    verrundete kartesische Kurve (CartesianPolylineBSplinesCurve), ihre
+    Abtastung und TOPP-RA kommen aus Intrinsic Core ueber
+    intrinsic_toppra_wrapper, die Rueckwaertskinematik aus MoveIt
+    (moveit_py im Rechner) -- nie aus einer zweiten Quelle.
 
     Wie bei TOTG laeuft die Rechnung als Kindprozess, je Auftrag einmal:
     intrinsic_lin_rechner.py, ueber dieselbe Klasse TotgProzess. Den
     Auftrag baut intrinsic_folge.anfrage aus derselben Nutzlast wie fuer
     Pilz; die Antwort liest intrinsic_folge.antwort_lesen.
 
-    Felder: resample_dt (wie TOTG) und rundung_rot in rad. Die
-    translatorische Verrundung ist der Radius der Liste; Intrinsic kennt
-    einen Wert fuer die ganze Kurve, verschiedene Radien ueber null sind
-    deshalb ein Fehler. Radius 0 bleibt Genauhalt. PTP und CIRC wirken
-    nicht (Warnung). Kein Ruck-Limit, keine TCP-Grenze, keine
-    Kollisionspruefung -- steht im Bericht und in der CSV.
+    Fahrarten. Je Zeile LIN (kartesisch linear, IK-Kette) oder PTP (gerade
+    im Gelenkraum, ohne IK); CIRC ist ein Fehler. Radius 0 bleibt
+    Genauhalt. Zwischen zwei LIN-Zeilen ist der Radius die translatorische
+    Verrundung der Kurve -- ein Wert fuer die ganze Kurve, verschiedene
+    Radien ueber null sind deshalb ein Fehler. Sonst heisst Radius ueber
+    null Ueberschleifen im Gelenkraum, auch an einem Wechsel der Fahrart.
+    Endet eine LIN-Kette auf einem anderen IK-Ast als ihr Achsziel, faehrt
+    der Rechner von dort weiter und meldet es (intrinsic_folge.AST_FOLGEN).
+
+    Felder: resample_dt (wie TOTG), rundung_rot (Verrundung der Drehung),
+    gelenk_abtastung und ueberschleifen (Glaettung im Gelenkraum, Standard
+    wie Intrinsic), v_bahn und a_bahn (Obergrenzen fuer Geschwindigkeit und
+    Beschleunigung des Tips, leer: keine). Kein Ruck-Limit, keine Grenze
+    fuer die Drehung des Tips, keine Kollisionspruefung -- steht im Bericht
+    und in der CSV.
 
     Der Wrapper liegt standardmaessig unter ~/intrinsic-core/bazel-bin/
     intrinsic_toppra_wrapper/; INTRINSIC_WRAPPER in der Umgebung geht vor.
@@ -1217,16 +1251,16 @@ import totg_prozess
 import ros_bruecke
 
 MODUL_STAENDE = {
-    einstellungen: 1,
+    einstellungen: 2,
     stil: 1,
     matrix: 1,
     anzeige: 1,
     urdf_modell: 1,
     kinematik: 1,
-    moveit_konfig: 1,
+    moveit_konfig: 2,
     bahn: 1,
-    totg_prozess: 1,
-    ros_bruecke: 1,
+    totg_prozess: 2,
+    ros_bruecke: 2,
 }
 
 
@@ -1244,8 +1278,8 @@ def pruefe_stand():
 
 pruefe_stand()
 
-from einstellungen import (BAHN_DIR, BACKUP_DIR, FOOTER_TICK_MS, MAX_HISTORY,
-                           MAX_LOG_LINES, RECORD_MIN_DIST_M,
+from einstellungen import (BAHN_DIR, BAHN_VIEWER, BACKUP_DIR, FOOTER_TICK_MS,
+                           HIER, MAX_HISTORY, MAX_LOG_LINES, RECORD_MIN_DIST_M,
                            RECORD_MIN_JOINT_DEG, RECORD_RATE_HZ,
                            RECORD_TICK_MS, SLIDER_REFRESH_MS, URDF_PATH)
 from stil import (ACCENT, BG, BG_CLAMPED, BG_INVALID, BG_OK, BORDER, BUTTON,
@@ -1287,7 +1321,7 @@ from bahn import (BRAKE_TIME_S, FOLGE_START_TOL, HOLD_WATCH_MS,
                   STATE_PLANNING, STATE_READY, STATE_SEQUENCE, STATE_SEQ_IK,
                   TF_STALL_MS, TrajectoryPlayer, bahn_startabweichung,
                   moveit_error_text)
-from totg_prozess import (BAHN_VIEWER, TotgProzess)
+from totg_prozess import (TotgProzess)
 from ros_bruecke import (RosBridge)
 
 
@@ -1340,9 +1374,17 @@ CART_FIELDS = [("x", "X", "m"), ("y", "Y", "m"), ("z", "Z", "m"),
 # und nicht als Literal im Code verstreut.
 ANGLE_KEYS = ("a", "b", "c")
 
-MOTION_FIELDS = [("jerk", "Jerk", "m/s3", 10.0),
-                 ("acceleration", "Acceleration", "m/s2", 2.0),
-                 ("speed", "Speed", "m/s", 0.5)]
+# Karte BEWEGUNG im Hauptfenster: dieselben Bahngrenzen wie auf der
+# Karteikarte Kartesisch, nur schneller erreichbar. Die Vorgaben kommen
+# deshalb aus CARTESIAN_FIELDS und stehen nicht ein zweites Mal hier -- bis
+# 2.2 zeigte die Karte 0.5 m/s und 2 m/s2, waehrend 1.0 und 2.25 galten.
+# Jerk ist seit 2.3 weg: Pilz rechnet trapezfoermig und kennt keinen
+# Bahnruck, das Feld hatte nie eine Wirkung.
+_BAHNGRENZE = {key: default for key, _l, _u, default in CARTESIAN_FIELDS}
+MOTION_FIELDS = [("speed", "Bahngeschwindigkeit", "m/s",
+                  _BAHNGRENZE["max_trans_vel"]),
+                 ("acceleration", "Bahnbeschleunigung", "m/s2",
+                  _BAHNGRENZE["max_trans_acc"])]
 
 PAD = 10                                               # ein Rastermass fuer alles
 
@@ -1414,7 +1456,7 @@ class UrdfViewer(tk.Tk):
         self.syncing = False                           # Schieber wird gerade gesetzt
         self.refresh_job = None                        # laufender after-Aufruf
         self.cart_entries = {}                         # Zielvorgabe kartesisch
-        self.motion_entries = {}                       # Jerk, Acceleration, Speed
+        self.motion_entries = {}                       # Bahngeschw., Bahnbeschl.
         self.motion = {key: default for key, _l, _u, default in MOTION_FIELDS}
         self.frames_shown = True                       # Frames-Karte sichtbar
         self.frame_items = {}                          # {linkname: iid im Baum}
@@ -1630,7 +1672,9 @@ class UrdfViewer(tk.Tk):
         self.totg = TotgProzess()
         # Seit 2.2. Derselbe Kindprozess, anderer Rechner.
         self.intrinsic = TotgProzess(rechner=intrinsic_folge.RECHNER)
-        self.seq_intrinsic_parameter = None            # (rundung_rot, resample_dt)
+        # (rundung_rot, resample_dt, ueberschleifen_rad, gelenk_abtastung_rad,
+        #  tcp_v_max oder None, tcp_a_max oder None)
+        self.seq_intrinsic_parameter = None
         self.seq_intrinsic_auftrag = None
         self.plan_hold_start = None                    # Achsstand beim Planen
         self.plan_hold_goal = None
@@ -1656,6 +1700,14 @@ class UrdfViewer(tk.Tk):
             value=f"{totg_folge.RESAMPLE_DT_STANDARD:g}")
         self.seq_rot_var = tk.StringVar(
             value=f"{intrinsic_folge.RUNDUNG_ROT_STANDARD:g}")
+        # Gelenkraum-Glaettung bei Intrinsic, Standard wie in Intrinsic.
+        self.seq_ueberschleifen_var = tk.StringVar(
+            value=f"{intrinsic_folge.UEBERSCHLEIFEN_RAD:g}")
+        self.seq_abtastung_var = tk.StringVar(
+            value=f"{intrinsic_folge.GELENK_ABTASTUNG_STANDARD:g}")
+        # Bahngrenzen des Tip-Links bei Intrinsic, leer: keine.
+        self.seq_tcp_v_var = tk.StringVar(value="")     # m/s
+        self.seq_tcp_a_var = tk.StringVar(value="")     # m/s^2
         self.session_var = tk.StringVar(value="Session  00:00:00:000")
         self.refresh_var = tk.StringVar(value="Last Refresh  --")
         self.edit_joint_var = tk.StringVar(value="")
@@ -1701,6 +1753,9 @@ class UrdfViewer(tk.Tk):
         self._setup_fonts()
         self._setup_style()
         self._build_ui()
+        # Die Karte BEWEGUNG zeigt von Anfang an, was gilt. Bis 2.2 geschah
+        # das erst beim ersten Uebernehmen im Parameterfenster.
+        self._sync_motion_from_config()
 
         # Erst hier, nicht im Zustandsteil: der Rueckruf zeichnet die
         # Frametabelle und die TCP-Zeile neu, und die gibt es vorher nicht.
@@ -2077,7 +2132,10 @@ class UrdfViewer(tk.Tk):
         inner = ttk.Frame(motion, style="Card.TFrame", padding=(16, 12))
         inner.grid(row=0, column=0, sticky="ew")
         inner.columnconfigure(1, weight=1)
-        ttk.Label(inner, text="BEWEGUNG", style="Section.TLabel").grid(
+        # Dieselbe Kennzeichnung wie im Parameterfenster: die Werte gehen in
+        # die Parameterdatei und wirken erst nach einem Neustart.
+        ttk.Label(inner, text="BEWEGUNG   (Neustart noetig)",
+                  style="Section.TLabel").grid(
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
         for row, (key, label, unit, default) in enumerate(MOTION_FIELDS, start=1):
             ttk.Label(inner, text=label, style="Card.TLabel").grid(
@@ -5681,10 +5739,7 @@ class UrdfViewer(tk.Tk):
                  "acceleration_scaling": "positive",
                  "planning_time": "positive",
                  "planning_attempts": "positive",
-                 "goal_position_tol": "positive",
                  "goal_orientation_tol": "positive",
-                 "max_step": "positive",
-                 "jump_threshold": "notneg",
                  "blend_radius": "notneg"}
         for key, label, _unit, _default in PLAN_FIELDS:
             good, value = self._read_param(key, label, sign=rules.get(key))
@@ -5876,11 +5931,11 @@ class UrdfViewer(tk.Tk):
         self.moveit_var.set(self._moveit_text())
 
     def _sync_motion_from_config(self):
-        """Die drei Felder im Hauptfenster auf die Bahngrenzen spiegeln.
+        """Die Felder der Karte BEWEGUNG auf die Bahngrenzen spiegeln.
 
-        Sie standen bisher fuer sich und wurden nur protokolliert. Jetzt sind
-        sie dieselbe Groesse wie auf der Karteikarte Kartesisch, in denselben
-        Einheiten. Zwei Anzeigen, ein Wert.
+        Sie sind dieselbe Groesse wie auf der Karteikarte Kartesisch, in
+        denselben Einheiten. Zwei Anzeigen, ein Wert. Gerufen beim Start und
+        nach jedem Uebernehmen im Parameterfenster.
         """
         self.motion["speed"] = self.moveit_config.cartesian["max_trans_vel"]
         self.motion["acceleration"] = self.moveit_config.cartesian["max_trans_acc"]
@@ -6409,7 +6464,7 @@ class UrdfViewer(tk.Tk):
                   "Fahrt starten.", "ok")
 
     def _apply_motion(self):
-        """Jerk, Beschleunigung und Geschwindigkeit uebernehmen."""
+        """Bahngeschwindigkeit und -beschleunigung uebernehmen."""
         values = {}
         for key, label, unit, _default in MOTION_FIELDS:
             entry = self.motion_entries[key]
@@ -6427,21 +6482,27 @@ class UrdfViewer(tk.Tk):
             values[key] = value
 
         self.motion = values
-        # Bisher endete die Funktion hier und der Wert lag im Nichts. Speed
-        # und Acceleration sind dieselbe Groesse wie die Bahngrenzen auf der
-        # Karteikarte Kartesisch, in denselben Einheiten -- also wandern sie
-        # dorthin. Jerk hat bei Pilz keine Entsprechung: dort wird trapezoid
-        # gerechnet, den Ruck begrenzt erst Ruckig ueber die Achsgrenzen.
+        # Dieselbe Groesse wie die Bahngrenzen auf der Karteikarte
+        # Kartesisch, in denselben Einheiten -- also wandern sie dorthin.
         self.moveit_config.cartesian["max_trans_vel"] = values["speed"]
         self.moveit_config.cartesian["max_trans_acc"] = values["acceleration"]
-        self.moveit_config.cartesian["max_trans_dec"] = -values["acceleration"]
+        # Die Verzoegerung folgt der Beschleunigung, wie bisher. Seit 2.3
+        # steht das im Protokoll: die Karte hat kein eigenes Feld dafuer, und
+        # ein Wert, der sich ohne sichtbares Feld aendert, gehoert gesagt.
+        verzoegerung = -values["acceleration"]
+        vorher = self.moveit_config.cartesian["max_trans_dec"]
+        self.moveit_config.cartesian["max_trans_dec"] = verzoegerung
         if self.params_window is not None and self.params_window.winfo_exists():
             self._params_fill()
         self._moveit_stale("Bahngrenzen geaendert")
-        self._log("Bewegung: Jerk {jerk:g}, Acceleration {acceleration:g}, "
-                  "Speed {speed:g}".format(**values), "ok")
-        self._log("Speed und Acceleration wirken als Bahngrenzen fuer LIN, "
-                  "Jerk erst ueber die Achsgrenzen und Ruckig", "info")
+        self._log("Bahngrenzen: Geschwindigkeit {speed:g} m/s, Beschleunigung "
+                  "{acceleration:g} m/s2".format(**values), "ok")
+        if float(vorher) != verzoegerung:
+            self._log(f"Bahnverzoegerung folgt der Beschleunigung: "
+                      f"{float(vorher):g} -> {verzoegerung:g} m/s2 "
+                      f"(Parameterfenster, Kartesisch)", "warn")
+        self._log("Die Bahngrenzen gelten fuer LIN und CIRC, nach einem "
+                  "Neustart von move_group", "info")
 
     # ----------------------------------------------------------------------
     # Bahnrekorder
@@ -6850,7 +6911,16 @@ class UrdfViewer(tk.Tk):
         for text, variable, einheit, verfahren in (
                 ("path_tolerance", self.seq_tol_var, "rad", (totg,)),
                 ("resample_dt", self.seq_dt_var, "s", (totg, intr)),
-                ("rundung_rot", self.seq_rot_var, "rad", (intr,))):
+                ("rundung_rot", self.seq_rot_var, "rad", (intr,)),
+                # Gelenkraum-Glaettung einer verschliffenen LIN-Folge. Zu
+                # grob, und kurze Ecken der Liste verschwinden.
+                ("gelenk_abtastung", self.seq_abtastung_var, "rad", (intr,)),
+                ("ueberschleifen", self.seq_ueberschleifen_var, "rad",
+                 (intr,)),
+                # Obergrenzen fuer Geschwindigkeit und Beschleunigung des
+                # Tips, leer: keine.
+                ("v_bahn", self.seq_tcp_v_var, "m/s", (intr,)),
+                ("a_bahn", self.seq_tcp_a_var, "m/s²", (intr,))):
             ttk.Label(zeile, text=text).pack(side="left")
             feld = self._entry(zeile, width=8)
             feld.configure(textvariable=variable)
@@ -6863,7 +6933,10 @@ class UrdfViewer(tk.Tk):
                        "Radius wird nicht gelesen. Pilz: Radius aus der "
                        "Liste, Ruckig muss aus sein. Intrinsic: LIN, "
                        "Kurve und TOPP-RA aus Intrinsic Core, IK aus "
-                       "MoveIt, ein Radius fuer alle Ecken.",
+                       "MoveIt, ein Radius fuer alle Ecken; gelenk_abtastung "
+                       "und ueberschleifen glaetten danach im Gelenkraum; "
+                       "v_bahn und a_bahn begrenzen Geschwindigkeit und "
+                       "Beschleunigung des Tips (leer: keine Grenze).",
                   style="Muted.TLabel", wraplength=DRIVE_WRAP).pack(
                       side="left")
         self._seq_totg_felder()
@@ -6939,8 +7012,10 @@ class UrdfViewer(tk.Tk):
         feststeht, faellt vor der ersten IK-Anfrage auf -- auch ein
         fehlender Wrapper.
         """
-        befunde = intrinsic_folge.pruefe_parameter(self.seq_rot_var.get(),
-                                                   self.seq_dt_var.get())
+        befunde = intrinsic_folge.pruefe_parameter(
+            self.seq_rot_var.get(), self.seq_dt_var.get(),
+            self.seq_ueberschleifen_var.get(), self.seq_abtastung_var.get(),
+            self.seq_tcp_v_var.get(), self.seq_tcp_a_var.get())
         if befunde:
             for befund in befunde:
                 self._seq_write(befund.text, "error")
@@ -6967,8 +7042,12 @@ class UrdfViewer(tk.Tk):
         if self.intrinsic.laeuft:
             self._log("intrinsic_lin_rechner rechnet noch", "error")
             return False
-        self.seq_intrinsic_parameter = (float(self.seq_rot_var.get()),
-                                        float(self.seq_dt_var.get()))
+        self.seq_intrinsic_parameter = (
+            float(self.seq_rot_var.get()), float(self.seq_dt_var.get()),
+            float(self.seq_ueberschleifen_var.get()),
+            float(self.seq_abtastung_var.get()),
+            intrinsic_folge.bahngrenze_lesen(self.seq_tcp_v_var.get()),
+            intrinsic_folge.bahngrenze_lesen(self.seq_tcp_a_var.get()))
         return True
 
     def _close_sequence(self):
@@ -7551,7 +7630,6 @@ class UrdfViewer(tk.Tk):
         lassen.
         """
         folge = self.seq_folge
-        base, tip = self.seq_ik_frames or ("", "")
         plan = self.moveit_config.plan
         try:
             payload = folge.nutzlast(
@@ -7561,7 +7639,6 @@ class UrdfViewer(tk.Tk):
                 planungszeit=float(plan["planning_time"]),
                 versuche=max(1, int(plan["planning_attempts"])),
                 tag=self._job_open(),
-                tcp=tip,
                 # Dieselbe Regel wie in _seq_read, sonst scheitert eine
                 # Intrinsic-Folge mit grossem Radius erst hier.
                 kugeln_pruefen=(self.seq_verfahren_geplant
@@ -7707,7 +7784,8 @@ class UrdfViewer(tk.Tk):
         """
         gelenke = [j for j in self.joints
                    if j["type"] != "fixed" and j["mimic"] is None]
-        rot, takt = self.seq_intrinsic_parameter
+        (rot, takt, ueberschleifen, abtastung,
+         tcp_v, tcp_a) = self.seq_intrinsic_parameter
         _base, tip = self.seq_ik_frames or ("", "")
         auftrag, befunde = intrinsic_folge.anfrage(
             payload,
@@ -7715,7 +7793,11 @@ class UrdfViewer(tk.Tk):
             self._seq_params_datei(),
             tip,
             rundung_rot=rot,
-            resample_dt=takt)
+            resample_dt=takt,
+            ueberschleifen_rad=ueberschleifen,
+            gelenk_abtastung_rad=abtastung,
+            tcp_v_max=tcp_v,
+            tcp_a_max=tcp_a)
         self._seq_write("")
         for befund in befunde:
             stufe = {sequenz.FEHLER: "error",
@@ -7745,6 +7827,13 @@ class UrdfViewer(tk.Tk):
 
         self.seq_intrinsic_auftrag = auftrag
         arten = auftrag.get("fahrarten") or ["LIN"]
+        bahngrenzen = []
+        if "tcp_v_max" in auftrag:
+            bahngrenzen.append(f"Bahngeschwindigkeit hoechstens "
+                               f"{auftrag['tcp_v_max']:g} m/s")
+        if "tcp_a_max" in auftrag:
+            bahngrenzen.append(f"Bahnbeschleunigung hoechstens "
+                               f"{auftrag['tcp_a_max']:g} m/s^2")
         self.seq_started = time.monotonic()
         self._set_state(STATE_SEQUENCE,
                         f"Intrinsic {len(auftrag['wegpunkte'])} Wegpunkte")
@@ -7753,13 +7842,19 @@ class UrdfViewer(tk.Tk):
             f"samt Start in {len(auftrag['abschnitte'])} Abschnitt(en) an "
             f"intrinsic_lin_rechner: Verrundung "
             f"{auftrag['rundung_translation_m']:g} m / "
-            f"{auftrag['rundung_rotation_rad']:g} rad, resample_dt "
+            f"{auftrag['rundung_rotation_rad']:g} rad, Gelenkraum "
+            f"Abtastung {auftrag['gelenk_abtastung_rad']:g} rad / "
+            f"Ueberschleifen {auftrag['ueberschleifen_rad']:g} rad, "
+            f"resample_dt "
             f"{auftrag['resample_dt']:g} s, Override "
             f"{auftrag['velocity_scaling'] * 100:g} % / "
-            f"{auftrag['acceleration_scaling'] * 100:g} %, Tip {tip}. "
-            f"Fahrarten je Abschnitt: {', '.join(arten)}. "
+            f"{auftrag['acceleration_scaling'] * 100:g} %, Tip {tip}, "
+            + (", ".join(bahngrenzen) or "ohne Bahngrenzen")
+            + f". Fahrarten je Abschnitt: {', '.join(arten)}. "
             + ("MoveItPy faehrt hoch, dann laufen je LIN-Abschnitt zwei "
                "IK-Ketten -- das dauert." if "LIN" in arten
+               else "Nur PTP: keine IK; MoveItPy nur fuer die FK der "
+                    "Bahngrenzen." if bahngrenzen
                else "Nur PTP: keine IK, kein MoveItPy."), "ok")
 
     def _intrinsic_poll(self):
@@ -7869,7 +7964,7 @@ class UrdfViewer(tk.Tk):
             intr = result.get("intrinsic") or {}
             for schluessel in ("rundung_translation_m",
                                "rundung_rotation_rad", "ueberschleifen_rad",
-                               "resample_dt"):
+                               "gelenk_abtastung_rad", "resample_dt"):
                 if schluessel in auftrag:
                     herkunft[schluessel] = float(auftrag[schluessel])
             for schluessel in ("fahrarten", "verschliffen",
@@ -7886,12 +7981,25 @@ class UrdfViewer(tk.Tk):
                                "ik_posenfehler_max_m",
                                "ik_posenfehler_max_rad",
                                "ziel_abweichung_max_rad",
-                               "uebergang_max_rad"):
+                               "uebergang_max_rad", "tcp_v_max",
+                               "tcp_v_gemessen_max", "tcp_v_faktor_max",
+                               "tcp_v_eingehalten", "tcp_a_max",
+                               "tcp_a_gemessen_max", "tcp_a_faktor_max",
+                               "tcp_a_eingehalten", "tcp_a_roh_max",
+                               "tcp_a_roh_faktor_max",
+                               "tcp_a_roh_eingehalten"):
                 if schluessel in intr and intr[schluessel] is not None:
                     herkunft[schluessel] = intr[schluessel]
             herkunft["intrinsic_hinweise"] = list(intr.get("hinweise") or ())
             herkunft["ruck_begrenzt"] = False
-            herkunft["tcp_grenze"] = "keine"
+            bahn = []
+            if "tcp_v_max" in auftrag:
+                bahn.append(f"v <= {float(auftrag['tcp_v_max']):g} m/s")
+            if "tcp_a_max" in auftrag:
+                bahn.append(f"a <= {float(auftrag['tcp_a_max']):g} m/s^2")
+            herkunft["tcp_grenze"] = (
+                " und ".join(bahn) + f" mal Override am Tip "
+                f"{auftrag.get('tip', '?')} (MoveIt-FK)" if bahn else "keine")
             herkunft["kollision"] = "nicht geprueft"
             namen = auftrag.get("namen") or []
             umkehr = [namen[i] for i in auftrag.get("umkehr", ())
@@ -7988,8 +8096,43 @@ class UrdfViewer(tk.Tk):
             f"{float(intr.get('v_faktor_max_abgetastet') or 0.0):.3f}, a "
             f"{float(intr.get('a_faktor_max_abgetastet') or 0.0):.3f} "
             f"({'eingehalten' if abg_ok else 'VERLETZT'}). Kein Ruck-Limit, "
-            f"keine TCP-Grenze, keine Kollisionspruefung.",
+            + ("" if intr.get("tcp_v_max") is not None
+               else "keine Bahngeschwindigkeit, ")
+            + ("" if intr.get("tcp_a_max") is not None
+               else "keine Bahnbeschleunigung, ")
+            + "keine Kollisionspruefung.",
             "ok" if roh_ok and abg_ok else "warn")
+        tip = auftrag.get("tip", "?")
+        if intr.get("tcp_v_max") is not None:
+            v_ok = intr.get("tcp_v_eingehalten")
+            v_soll = (float(intr["tcp_v_max"])
+                      * float(auftrag.get("velocity_scaling", 1.0)))
+            self._seq_write(
+                f"Bahngeschwindigkeit am Tip {tip}: "
+                f"Vorgabe {v_soll:g} m/s, gemessen bis "
+                f"{float(intr.get('tcp_v_gemessen_max') or 0.0):.4f} m/s "
+                f"(Faktor {float(intr.get('tcp_v_faktor_max') or 0.0):.4f}, "
+                f"{'eingehalten' if v_ok else 'UEBERSCHRITTEN'}). Die "
+                f"Grenze war an {intr.get('tcp_massgeblich_proben')} von "
+                f"{intr.get('tcp_proben')} Pfadproben strenger als die "
+                f"Achsen.", "ok" if v_ok else "warn")
+        if intr.get("tcp_a_max") is not None:
+            roh_a_ok = intr.get("tcp_a_roh_eingehalten")
+            abg_a_ok = intr.get("tcp_a_eingehalten")
+            a_soll = (float(intr["tcp_a_max"])
+                      * float(auftrag.get("acceleration_scaling", 1.0)))
+            self._seq_write(
+                f"Bahnbeschleunigung am Tip {tip}: Vorgabe {a_soll:g} m/s^2, "
+                f"TOPP-RA roh bis "
+                f"{float(intr.get('tcp_a_roh_max') or 0.0):.4f} m/s^2 "
+                f"(Faktor "
+                f"{float(intr.get('tcp_a_roh_faktor_max') or 0.0):.4f}, "
+                f"{'eingehalten' if roh_a_ok else 'UEBERSCHRITTEN'}); "
+                f"abgetastet bis "
+                f"{float(intr.get('tcp_a_gemessen_max') or 0.0):.4f} m/s^2 "
+                f"(Faktor {float(intr.get('tcp_a_faktor_max') or 0.0):.4f}, "
+                f"{'eingehalten' if abg_a_ok else 'UEBERSCHRITTEN'}).",
+                "ok" if roh_a_ok and abg_a_ok else "warn")
         for hinweis in intr.get("hinweise") or ():
             self._seq_write(f"Intrinsic: {hinweis}", "warn")
         leer = [nummer + 1 for nummer, n in enumerate(teilbahnen) if n == 0]
@@ -8400,9 +8543,12 @@ class UrdfViewer(tk.Tk):
         self._log(f"{written} Punkte der geplanten Folge nach {path} "
                   f"geschrieben", "ok")
         self._seq_write("")
+        # Mit vollem Pfad: "./" galt nur, wenn das Terminal zufaellig im
+        # Ordner der GUI stand.
         self._seq_write(f"{written} Punkte nach {path} geschrieben. "
-                        f"Ansehen mit ./{BAHN_VIEWER} {path} -- fuer den "
-                        f"Vergleich die zweite Datei dazuladen.", "ok")
+                        f"Ansehen mit python3 "
+                        f"{os.path.join(HIER, BAHN_VIEWER)} {path} -- fuer "
+                        f"den Vergleich die zweite Datei dazuladen.", "ok")
 
 
     # ----------------------------------------------------------------------

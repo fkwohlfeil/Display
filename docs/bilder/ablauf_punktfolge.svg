@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 610" width="820" height="610">
+  <style>
+    text { font-family: 'Segoe UI', Ubuntu, 'DejaVu Sans', Arial, sans-serif; font-size: 12px; fill: #1f2933; }
+    .s { font-size: 10.5px; fill: #4b5563; }
+    .k { font-size: 10px; fill: #6b7480; }
+    .b { font-weight: 700; }
+    .box { fill: #ffffff; stroke: #9aa3ad; stroke-width: 1.2; }
+    .pilz { fill: #e8f0fc; stroke: #2563c9; stroke-width: 1.3; }
+    .totg { fill: #eef8f1; stroke: #1a7f37; stroke-width: 1.3; }
+    .intr { fill: #fdf6ea; stroke: #9a6700; stroke-width: 1.3; }
+    .line { stroke: #4b5563; stroke-width: 1.4; fill: none; }
+    .klammer { stroke: #2563c9; stroke-width: 1.4; fill: none; }
+    .kl { font-size: 10.5px; fill: #2563c9; font-weight: 700; }
+    text { white-space: pre; }
+    .m text { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: inherit; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="190" y="8" width="420" height="44" rx="6" class="box"/>
+  <text x="400" y="26" text-anchor="middle" class="b">Punktliste im Fenster „Punktfolge“</text>
+  <text x="400" y="43" text-anchor="middle" class="s">X Y Z A B C [feld=wert …]   ·   J-Zeilen mit Achswerten</text>
+  <path class="line" d="M400,52 L400,70" marker-end="url(#a)"/>
+
+  <rect x="190" y="70" width="420" height="44" rx="6" class="box"/>
+  <text x="400" y="88" text-anchor="middle" class="b">sequenz.lies_liste → Folge.aufloesen → Folge.pruefe</text>
+  <text x="400" y="105" text-anchor="middle" class="s">Modalzustand, Grenzen, Überschleifkugeln, letzter Radius = 0</text>
+  <path class="line" d="M400,114 L400,132" marker-end="url(#a)"/>
+
+  <rect x="190" y="132" width="420" height="44" rx="6" class="box"/>
+  <text x="400" y="150" text-anchor="middle" class="b">Achsziele (J-Zeilen) zuordnen</text>
+  <text x="400" y="167" text-anchor="middle" class="s">sequenz.loese_achsziel · Lage per eigener FK</text>
+  <path class="line" d="M400,176 L400,200" marker-end="url(#a)"/>
+
+  <rect x="190" y="200" width="420" height="44" rx="6" class="box"/>
+  <text x="400" y="218" text-anchor="middle" class="b">IK-Kette über /compute_ik</text>
+  <text x="400" y="235" text-anchor="middle" class="s">ein Aufruf je Lage · Startwert = Lösung des Vorgängers</text>
+  <path class="line" d="M400,244 L400,262" marker-end="url(#a)"/>
+
+  <rect x="190" y="262" width="420" height="44" rx="6" class="box"/>
+  <text x="400" y="280" text-anchor="middle" class="b">Folge.nutzlast(…)</text>
+  <text x="400" y="297" text-anchor="middle" class="s">nur noch Achsziele · Startzustand nur am ersten Posten</text>
+
+  <!-- Klammern rechts -->
+  <path class="klammer" d="M622,8 L632,8 L632,176 L622,176"/>
+  <text x="640" y="88" class="kl">„Pruefen“</text>
+  <text x="640" y="102" class="k">ohne move_group</text>
+  <path class="klammer" d="M622,200 L632,200 L632,306 L622,306"/>
+  <text x="640" y="246" class="kl">„Folge planen“</text>
+  <text x="640" y="260" class="k">prüft erneut, dann</text>
+  <text x="640" y="273" class="k">Zustand FOLGE IK</text>
+
+  <!-- Verzweigung -->
+  <text x="12" y="334" class="k">Zustand FOLGE – Rechnung nach gewähltem Verfahren:</text>
+  <path class="line" d="M400,306 L135,344" marker-end="url(#a)"/>
+  <path class="line" d="M400,306 L410,344" marker-end="url(#a)"/>
+  <path class="line" d="M400,306 L685,344" marker-end="url(#a)"/>
+
+  <rect x="10" y="344" width="250" height="72" rx="6" class="pilz"/>
+  <text x="135" y="362" text-anchor="middle" class="b">Pilz</text>
+  <text x="135" y="379" text-anchor="middle" class="s">RosBridge.request_sequence</text>
+  <text x="135" y="394" text-anchor="middle" class="s">/plan_sequence_path (move_group)</text>
+  <text x="135" y="409" text-anchor="middle" class="s">Antwort über _tick</text>
+
+  <rect x="285" y="344" width="250" height="72" rx="6" class="totg"/>
+  <text x="410" y="362" text-anchor="middle" class="b">TOTG</text>
+  <text x="410" y="379" text-anchor="middle" class="s">totg_folge.anfrage → TotgProzess</text>
+  <text x="410" y="394" text-anchor="middle" class="s">totg_rechner.py (MoveItPy)</text>
+  <text x="410" y="409" text-anchor="middle" class="s">totg_folge.antwort_lesen (_totg_poll)</text>
+
+  <rect x="560" y="344" width="250" height="72" rx="6" class="intr"/>
+  <text x="685" y="362" text-anchor="middle" class="b">Intrinsic</text>
+  <text x="685" y="379" text-anchor="middle" class="s">intrinsic_folge.anfrage → TotgProzess</text>
+  <text x="685" y="394" text-anchor="middle" class="s">intrinsic_lin_rechner.py ⇄ Wrapper</text>
+  <text x="685" y="409" text-anchor="middle" class="s">intrinsic_folge.antwort_lesen</text>
+
+  <path class="line" d="M135,416 L330,446" marker-end="url(#a)"/>
+  <path class="line" d="M410,416 L410,446" marker-end="url(#a)"/>
+  <path class="line" d="M685,416 L490,446" marker-end="url(#a)"/>
+
+  <rect x="190" y="446" width="420" height="58" rx="6" class="box"/>
+  <text x="400" y="465" text-anchor="middle" class="b">_on_sequence_result</text>
+  <text x="400" y="481" text-anchor="middle" class="s">bereinige_zeitreihe · pruefe_bahn · Bericht · Herkunft für die CSV</text>
+  <text x="400" y="496" text-anchor="middle" class="s">TrajectoryPlayer → seq_hold („fahrbereit“), Zustand BEREIT</text>
+
+  <path class="line" d="M330,504 L255,530" marker-end="url(#a)"/>
+  <path class="line" d="M470,504 L565,530" marker-end="url(#a)"/>
+
+  <rect x="90" y="530" width="310" height="56" rx="6" class="box"/>
+  <text x="245" y="549" text-anchor="middle" class="b">„Folge fahren“</text>
+  <text x="245" y="566" text-anchor="middle" class="s">Prüfung Achsstand · _start_playing · Zustand FAHREN</text>
+  <text x="245" y="580" text-anchor="middle" class="s">_motion_tick alle 20 ms → _push_positions → /tf</text>
+
+  <rect x="420" y="530" width="310" height="56" rx="6" class="box"/>
+  <text x="575" y="549" text-anchor="middle" class="b">„Bahn als CSV…“</text>
+  <text x="575" y="566" text-anchor="middle" class="s">PathRecorder (ohne Filter) + zusatzzeilen</text>
+  <text x="575" y="580" text-anchor="middle" class="s">TCP_Fahrten/plan_&lt;verfahren&gt;_&lt;zeit&gt;.csv</text>
+</svg>

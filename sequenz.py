@@ -482,7 +482,7 @@ class Folge:
     # -- Nutzlast ----------------------------------------------------------
 
     def nutzlast(self, gruppe, start, toleranz, planungszeit=1.0,
-                 versuche=1, tag=None, tcp=None, kugeln_pruefen=True):
+                 versuche=1, tag=None, kugeln_pruefen=True):
         """Reine Zahlen und Zeichenketten fuer /plan_sequence_path.
 
         Gebaut wird hier, gesendet in der Bruecke. Der GUI-Faden baut keine
@@ -507,6 +507,14 @@ class Folge:
         kugeln_pruefen wie bei pruefe(). Muss zu dem passen, womit die Folge
         vorher geprueft wurde -- sonst geht sie durch die Pruefung und
         scheitert erst hier, nach der IK.
+
+        Seit 2.3 geht nur noch hinaus, was Achswerte traegt. Jeder Punkt ist
+        vorher aufgeloest: Lagen ueber die IK-Kette der Oberflaeche, Achsziele
+        ueber loese_achsziel. Bis 2.2 stand hier ein Zweig, der eine Lage
+        unaufgeloest an move_group gab. Er war seit 3.2 unerreichbar, und sein
+        Format passte nicht zu dem, was die Bruecke erwartete -- ein Ziel, das
+        so nie ankaeme, wie es gemeint war. Jetzt ist ein Punkt ohne
+        Achswerte ein Fehler, und zwar hier und nicht erst bei Pilz.
         """
         schritte = self.aufloesen()
         befunde = self.pruefe(schritte, kugeln_pruefen=kugeln_pruefen)
@@ -538,14 +546,12 @@ class Folge:
                 # stille Tausch, den die J-Zeile verhindern soll.
                 raise ValueError(f"{schritt.name}: Achsziel ohne Achswerte")
             else:
-                # Ohne aufgeloeste Achswerte geht das Ziel als Lage hinaus
-                # und move_group rechnet die Rueckwaertskinematik. Bei einer
-                # redundanten Kette heisst das, dass der Konfigurationszweig
-                # nicht gesichert ist -- deshalb steht es hier ausdruecklich
-                # als eigener Fall und nicht als stiller Zweig.
-                eintrag["pose"] = {"xyz": schritt.punkt.xyz,
-                                   "abc": schritt.punkt.abc,
-                                   "tcp": tcp}
+                # Eine Lage ohne Achswerte geht nicht hinaus. move_group
+                # rechnete die Rueckwaertskinematik dann selbst, und bei
+                # einer redundanten Kette waere der Konfigurationszweig
+                # nicht gesichert -- genau das, was die IK-Kette verhindert.
+                raise ValueError(f"{schritt.name}: Lage ohne Achswerte. Erst "
+                                 f"ueber die Rueckwaertskinematik aufloesen.")
             if schritt.punkt.hilfspunkt is not None:
                 eintrag["hilfspunkt"] = schritt.punkt.hilfspunkt
             posten.append(eintrag)

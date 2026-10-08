@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 700" width="560" height="700">
+  <style>
+    text { font-family: 'Segoe UI', Ubuntu, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; fill: #1f2933; }
+    .m { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: 10px; }
+    .h { font-size: 9px; font-weight: 700; fill: #6b7480; letter-spacing: .5px; }
+    .s { font-size: 9.5px; fill: #6b7480; }
+    .card { fill: #ffffff; stroke: #d5dbe3; }
+    .btn { fill: #e3e8ef; stroke: #d5dbe3; }
+    .mini { fill: #ffffff; stroke: #d5dbe3; }
+    .ent { fill: #ffffff; stroke: #c3cad3; }
+    .w { fill: #ffffff; font-weight: 700; }
+    .num { fill: #d13438; }
+    .nt { fill: #ffffff; font-weight: 700; font-size: 11px; }
+    text { white-space: pre; }
+    .m text { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: inherit; }
+  </style>
+
+  <rect x="1" y="1" width="558" height="698" rx="8" fill="#eef1f5" stroke="#9aa3ad"/>
+  <path d="M1,9 a8,8 0 0 1 8,-8 h542 a8,8 0 0 1 8,8 v18 h-558 z" fill="#dfe4ea"/>
+  <text x="14" y="19" style="font-weight:700">Fahren</text>
+
+  <!-- TCP-Lage -->
+  <rect x="12" y="36" width="536" height="76" rx="3" class="card"/>
+  <text x="26" y="53" class="h">TCP-LAGE, GERECHNET</text>
+  <text x="26" y="71" class="m" style="fill:#1a7f37;font-size:11px">tcp11</text>
+  <text x="26" y="87" class="m" style="fill:#1a7f37;font-size:11px">X   0.4120 Y   0.0000 Z   0.8810 m   A 0.00 B 90.00 C 0.00 deg  ZYX</text>
+  <text x="26" y="103" class="s">Vorwaertskinematik aus den Achswerten. Kein Sollwert und kein Zielfeld – was hier steht, ist der Stand.</text>
+
+  <!-- rollender Bereich -->
+  <rect x="12" y="120" width="536" height="360" rx="3" class="card"/>
+  <rect x="536" y="124" width="8" height="200" rx="4" fill="#ccd3dc"/>
+  <text x="26" y="138" class="h">ZIELRAUM</text>
+  <circle cx="32" cy="153" r="5" fill="#ffffff" stroke="#2563c9" stroke-width="1.5"/><circle cx="32" cy="153" r="2.5" fill="#2563c9"/>
+  <text x="42" y="157">Achsraum</text>
+  <circle cx="122" cy="153" r="5" fill="#ffffff" stroke="#9aa3ad"/>
+  <text x="132" y="157">Kartesisch (IK)</text>
+
+  <text x="26" y="182" class="h">ZIEL IM ACHSRAUM</text>
+  <g>
+    <text x="26" y="203">joint1</text><rect x="110" y="191" width="80" height="17" class="ent"/><text x="186" y="203" text-anchor="end" class="m">0.00</text><text x="196" y="203" class="s">deg</text>
+    <rect x="228" y="191" width="20" height="17" rx="2" class="mini"/><text x="238" y="204" text-anchor="middle">−</text>
+    <rect x="252" y="191" width="20" height="17" rx="2" class="mini"/><text x="262" y="204" text-anchor="middle">+</text>
+    <text x="520" y="203" text-anchor="end" class="s">-170.00 .. 170.00</text>
+
+    <text x="26" y="227">joint2</text><rect x="110" y="215" width="80" height="17" class="ent"/><text x="186" y="227" text-anchor="end" class="m">45.00</text><text x="196" y="227" class="s">deg</text>
+    <rect x="228" y="215" width="20" height="17" rx="2" class="mini"/><text x="238" y="228" text-anchor="middle">−</text>
+    <rect x="252" y="215" width="20" height="17" rx="2" class="mini"/><text x="262" y="228" text-anchor="middle">+</text>
+    <text x="520" y="227" text-anchor="end" class="s">-120.00 .. 120.00</text>
+
+    <text x="26" y="251">joint3</text><rect x="110" y="239" width="80" height="17" class="ent"/><text x="186" y="251" text-anchor="end" class="m">0.00</text><text x="196" y="251" class="s">deg</text>
+    <rect x="228" y="239" width="20" height="17" rx="2" class="mini"/><text x="238" y="252" text-anchor="middle">−</text>
+    <rect x="252" y="239" width="20" height="17" rx="2" class="mini"/><text x="262" y="252" text-anchor="middle">+</text>
+    <text x="520" y="251" text-anchor="end" class="s">-170.00 .. 170.00</text>
+    <text x="26" y="274" class="s">… je bewegliche, nicht gekoppelte Achse eine Zeile</text>
+  </g>
+  <text x="26" y="296" class="s">Joggen: Klick 0.1 deg bzw. 10 mm, Halten 0.2 deg/s bzw. 0.02 m/s.</text>
+  <text x="26" y="309" class="s">Stellt die Achse unmittelbar, ohne move_group.</text>
+  <rect x="26" y="318" width="90" height="20" rx="2" class="btn"/><text x="71" y="332" text-anchor="middle">Ist-Werte</text>
+  <rect x="122" y="318" width="90" height="20" rx="2" class="btn"/><text x="167" y="332" text-anchor="middle">Nullstellung</text>
+
+  <line x1="26" y1="352" x2="522" y2="352" stroke="#e5e9ef"/>
+  <text x="26" y="370" class="h">FAHRPARAMETER</text>
+  <text x="26" y="391">Fahrart</text><rect x="190" y="379" width="70" height="17" class="ent"/><text x="196" y="391" class="m">PTP</text><text x="252" y="391" class="s" text-anchor="end">▾</text>
+  <text x="26" y="414">Override Geschwindigkeit</text><rect x="190" y="402" width="70" height="17" class="ent"/><text x="256" y="414" text-anchor="end" class="m">100</text><text x="266" y="414" class="s">%</text>
+  <text x="26" y="437">Override Beschleunigung</text><rect x="190" y="425" width="70" height="17" class="ent"/><text x="256" y="437" text-anchor="end" class="m">100</text><text x="266" y="437" class="s">%</text>
+  <text x="26" y="460" class="m">wirksam  PTP   v 100 %   a 100 %</text>
+
+  <!-- Auftrag -->
+  <rect x="12" y="488" width="536" height="202" rx="3" class="card"/>
+  <text x="26" y="505" class="h">AUFTRAG</text>
+  <text x="26" y="523" class="m">Zustand  BEREIT</text>
+  <text x="26" y="539" class="m">Plan bereit  412 Punkte, 4.08 s</text>
+  <rect x="26" y="550" width="92" height="26" rx="2" fill="#1565c0"/><text x="72" y="567" text-anchor="middle" class="w">Planen</text>
+  <rect x="124" y="550" width="112" height="26" rx="2" fill="#2e7d32"/><text x="180" y="567" text-anchor="middle" class="w">Fahrt starten</text>
+  <rect x="242" y="550" width="92" height="26" rx="2" fill="#d13438"/><text x="288" y="567" text-anchor="middle" class="w">Bremsen</text>
+  <rect x="26" y="586" width="186" height="38" rx="2" fill="#00695c"/><text x="119" y="609" text-anchor="middle" class="w">FAHREN  (HALTEN)</text>
+  <text x="224" y="601" class="s">Druecken plant und faehrt, Loslassen bremst.</text>
+  <text x="224" y="615" class="s">Nach dem Loslassen 0.4 s Bremszeit.</text>
+  <rect x="26" y="634" width="508" height="46" rx="2" fill="#e6f4ea"/>
+  <text x="36" y="651" style="fill:#1a7f37;font-size:10px">Ein Ziel hier bewegt nichts. Erst Planen, dann Fahrt starten. Waehrend der Fahrt</text>
+  <text x="36" y="665" style="fill:#1a7f37;font-size:10px">sind die Sollwertfelder gesperrt. Bei einem kartesischen Ziel loest Planen zuerst</text>
+  <text x="36" y="679" style="fill:#1a7f37;font-size:10px">die Rueckwaertskinematik auf …</text>
+
+  <!-- Nummern -->
+  <circle cx="540" cy="44" r="10" class="num"/><text x="540" y="48" text-anchor="middle" class="nt">1</text>
+  <circle cx="250" cy="153" r="10" class="num"/><text x="250" y="157" text-anchor="middle" class="nt">2</text>
+  <circle cx="300" cy="211" r="10" class="num"/><text x="300" y="215" text-anchor="middle" class="nt">3</text>
+  <circle cx="232" cy="328" r="10" class="num"/><text x="232" y="332" text-anchor="middle" class="nt">4</text>
+  <circle cx="300" cy="400" r="10" class="num"/><text x="300" y="404" text-anchor="middle" class="nt">5</text>
+  <circle cx="320" cy="531" r="10" class="num"/><text x="320" y="535" text-anchor="middle" class="nt">6</text>
+  <circle cx="354" cy="563" r="10" class="num"/><text x="354" y="567" text-anchor="middle" class="nt">7</text>
+  <circle cx="476" cy="604" r="10" class="num"/><text x="476" y="608" text-anchor="middle" class="nt">8</text>
+</svg>

@@ -1,0 +1,205 @@
+/* Druckstil fuer die Dokumentation. Wird von pdf_erzeugen.sh ueber pandoc
+   eingebettet und von Chrome/Edge (headless) nach PDF gedruckt. */
+
+@page {
+  size: A4;
+  margin: 20mm 17mm 19mm 19mm;
+  @top-left {
+    content: "URDF-GUI für Bahnplanung";
+    font: 8pt "Segoe UI", Ubuntu, Arial, sans-serif;
+    color: #6b7480;
+  }
+  @top-right {
+    content: "Entwickler- und Bedienerdokumentation";
+    font: 8pt "Segoe UI", Ubuntu, Arial, sans-serif;
+    color: #6b7480;
+  }
+  @bottom-right {
+    content: "Seite " counter(page) " von " counter(pages);
+    font: 8pt "Segoe UI", Ubuntu, Arial, sans-serif;
+    color: #6b7480;
+  }
+}
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-right { content: none; }
+}
+
+:root {
+  --text: #1f2933;
+  --muted: #6b7480;
+  --accent: #2563c9;
+  --border: #d5dbe3;
+  --head: #eaeef3;
+  --stripe: #f7f9fb;
+}
+
+html { font-size: 9.6pt; }
+body {
+  font-family: "Segoe UI", Ubuntu, "DejaVu Sans", Arial, sans-serif;
+  color: var(--text);
+  line-height: 1.45;
+  margin: 0;
+  max-width: none;
+  padding: 0;
+  hyphens: auto;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---------- Titelseite ---------- */
+#title-block-header {
+  break-after: page;
+  height: 245mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-left: 6mm solid var(--accent);
+  padding-left: 12mm;
+  margin: 0;
+}
+#title-block-header .title {
+  font-size: 30pt;
+  line-height: 1.15;
+  margin: 0 0 4mm 0;
+  color: var(--text);
+  border: 0;
+  break-before: auto;
+}
+#title-block-header .subtitle {
+  font-size: 16pt;
+  color: var(--accent);
+  margin: 0 0 14mm 0;
+}
+#title-block-header .author,
+#title-block-header .date {
+  font-size: 11pt;
+  color: var(--muted);
+  margin: 1mm 0;
+}
+
+/* ---------- Inhaltsverzeichnis ---------- */
+nav#TOC {
+  break-after: page;
+}
+nav#TOC > h2, #toc-title {
+  font-size: 18pt;
+  border: 0;
+  margin: 0 0 6mm 0;
+  break-before: auto;
+}
+nav#TOC ul { list-style: none; padding-left: 0; margin: 0; }
+nav#TOC > ul > li { margin-top: 4mm; }
+nav#TOC > ul > li > a { font-weight: 700; font-size: 11pt; color: var(--accent); }
+nav#TOC ul ul { padding-left: 6mm; }
+nav#TOC ul ul li { margin: 0.6mm 0; }
+nav#TOC a { color: var(--text); text-decoration: none; }
+
+/* ---------- Ueberschriften ---------- */
+h1, h2, h3, h4 { line-height: 1.25; break-after: avoid; }
+h1.teil {
+  break-before: page;
+  font-size: 24pt;
+  color: #ffffff;
+  background: var(--accent);
+  padding: 7mm 8mm;
+  margin: 0 0 6mm 0;
+  border-radius: 2mm;
+}
+h2 {
+  font-size: 15pt;
+  margin: 9mm 0 3mm 0;
+  padding-bottom: 1.5mm;
+  border-bottom: 0.4mm solid var(--border);
+  color: var(--text);
+}
+h3 { font-size: 11.5pt; margin: 6mm 0 2mm 0; color: var(--accent); }
+h4 { font-size: 10pt; margin: 4mm 0 1.5mm 0; }
+p { margin: 0 0 2.4mm 0; orphans: 3; widows: 3; }
+ul, ol { margin: 0 0 2.4mm 0; padding-left: 6mm; }
+li { margin: 0.6mm 0; }
+a { color: var(--accent); text-decoration: none; }
+
+/* ---------- Kaesten ---------- */
+div.teilkopf {
+  background: #f3f5f8;
+  border-left: 1.2mm solid var(--muted);
+  padding: 3mm 4mm;
+  margin: 0 0 6mm 0;
+  color: #374151;
+}
+div.teilkopf p:last-child, div.hinweis p:last-child { margin-bottom: 0; }
+div.hinweis {
+  background: #e6f4ea;
+  border-left: 1.2mm solid #1a7f37;
+  padding: 2.5mm 4mm;
+  margin: 3mm 0 4mm 0;
+  break-inside: avoid;
+}
+
+/* ---------- Code ---------- */
+code {
+  font-family: Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 0.92em;
+  background: #f1f4f8;
+  padding: 0 0.6mm;
+  border-radius: 0.6mm;
+  hyphens: none;
+}
+pre, div.sourceCode {
+  background: #f5f7fa;
+  border-left: 1mm solid var(--accent);
+  padding: 2.5mm 3.5mm;
+  margin: 2mm 0 4mm 0;
+  font-size: 8.2pt;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+}
+div.sourceCode pre { border: 0; padding: 0; margin: 0; background: transparent; }
+/* Pandoc rueckt im Druck jede Codezeile um 5em ein (haengender Einzug fuer
+   Zeilennummern). Ohne Zeilennummern ist das nur Platzverschwendung. */
+pre > code.sourceCode > span { text-indent: 0 !important; padding-left: 0 !important; }
+pre code { background: transparent; padding: 0; font-size: inherit; }
+
+/* ---------- Tabellen ---------- */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 2mm 0 5mm 0;
+  font-size: 8.6pt;
+  line-height: 1.35;
+}
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th {
+  background: var(--head);
+  color: #374151;
+  text-align: left;
+  font-weight: 700;
+  padding: 1.4mm 2mm;
+  border-bottom: 0.35mm solid #c3cad3;
+}
+td {
+  padding: 1.2mm 2mm;
+  border-bottom: 0.2mm solid var(--border);
+  vertical-align: top;
+}
+tbody tr:nth-child(even) td { background: var(--stripe); }
+td code, th code { white-space: normal; overflow-wrap: break-word; }
+
+/* ---------- Abbildungen ---------- */
+figure {
+  margin: 4mm 0 5mm 0;
+  text-align: center;
+  break-inside: avoid;
+}
+figure img { max-width: 100%; height: auto; }
+figcaption {
+  font-size: 8.6pt;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 1.5mm;
+}

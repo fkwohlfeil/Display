@@ -83,6 +83,16 @@ json.dump({"ok": True, "stand": 2, "intrinsic_release": "20260922.0",
            "lin": [{"ik_sprung_max_dicht_rad": 0.02,
                     "ziel_abweichung_rad": 1e-10, "pfadpunkte": 5}],
            "hinweise": ["Start -> P2: Hinweis aus dem Wrapper"],
+           "lin_vorgaben": {"tcp_v_max": auftrag.get("tcp_v_max"),
+                            "tcp_a_max": auftrag.get("tcp_a_max")},
+           "tcp_pruefung": ({"v_max_m_s": 0.1249, "v_faktor_max": 0.9992,
+                             "v_eingehalten": True, "massgeblich_proben": 40,
+                             "proben": 50, "a_max_m_s2": 0.42,
+                             "a_faktor_max": 1.05, "a_eingehalten": False,
+                             "a_roh_max_m_s2": 0.39,
+                             "a_roh_faktor_max": 0.975,
+                             "a_roh_eingehalten": True}
+                            if "tcp_v_max" in auftrag else None),
            "auftrag_echo": auftrag},
           open(sys.argv[2], "w"))
 '''
@@ -149,6 +159,10 @@ class Ersatz(Methoden):
         self.seq_verfahren_var = Var(intrinsic_folge.VERFAHREN_INTRINSIC)
         self.seq_rot_var = Var("0.2")
         self.seq_dt_var = Var("0.004")
+        self.seq_ueberschleifen_var = Var("0.03")
+        self.seq_abtastung_var = Var("0.005")
+        self.seq_tcp_v_var = Var("")
+        self.seq_tcp_a_var = Var("")
         self.seq_intrinsic_parameter = None
         self.seq_intrinsic_auftrag = None
         self.intrinsic = TotgProzess(rechner=os.path.join(ordner, "rechner.py"))
@@ -225,7 +239,7 @@ class Anbindung(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.alt)
 
-    def bereit_und_senden(self):
+    def bereit_und_senden(self, tcp_v=None, tcp_a=None):
         rechner_alt = intrinsic_folge.RECHNER
         intrinsic_folge.RECHNER = self.gui.intrinsic.rechner
         try:
@@ -233,7 +247,8 @@ class Anbindung(unittest.TestCase):
                             self.gui.protokoll)
         finally:
             intrinsic_folge.RECHNER = rechner_alt
-        self.assertEqual(self.gui.seq_intrinsic_parameter, (0.2, 0.004))
+        self.assertEqual(self.gui.seq_intrinsic_parameter,
+                         (0.2, 0.004, 0.03, 0.005, tcp_v, tcp_a))
         self.gui._intrinsic_send(nutzlast())
 
     def test_gut(self):
@@ -248,6 +263,9 @@ class Anbindung(unittest.TestCase):
         # Zeitgrenze aus dem Parameterfenster, nicht die feste des Rechners.
         self.assertEqual(auftrag["ik_timeout_s"], 0.2)
         self.assertEqual(auftrag["rundung_rotation_rad"], 0.2)
+        # Die Gelenkraum-Felder aus dem Folgenfenster, nicht die Standards.
+        self.assertEqual(auftrag["ueberschleifen_rad"], 0.03)
+        self.assertEqual(auftrag["gelenk_abtastung_rad"], 0.005)
         self.assertEqual(auftrag["grenzen"]["max_velocity"], [1.5, 2.5])
         self.assertEqual(auftrag["grenzen"]["max_position"][1], 1e9)
         self.assertTrue(any("continuous" in t for _, t in
@@ -274,6 +292,40 @@ class Anbindung(unittest.TestCase):
         self.assertIn("v bis 0.900, a bis 0.800", text)
         self.assertIn("Intrinsic: Start -> P2: Hinweis aus dem Wrapper", text)
         self.assertNotIn("VERLETZT", text)
+        # Ohne v_bahn keine Grenze im Auftrag, und der Bericht sagt es.
+        self.assertNotIn("tcp_v_max", auftrag)
+        self.assertIn("keine Bahngeschwindigkeit", text)
+
+    def test_bahngrenzen(self):
+        self.gui.seq_tcp_v_var = Var("0.25")
+        self.gui.seq_tcp_a_var = Var("0.8")
+        self.bereit_und_senden(tcp_v=0.25, tcp_a=0.8)
+        auftrag = self.gui.seq_intrinsic_auftrag
+        self.assertEqual(auftrag["tcp_v_max"], 0.25)
+        self.assertEqual(auftrag["tcp_a_max"], 0.8)
+        self.assertTrue(any("Bahngeschwindigkeit hoechstens 0.25 m/s, "
+                            "Bahnbeschleunigung hoechstens 0.8 m/s^2" in t
+                            for _, t in self.gui.geschrieben),
+                        self.gui.geschrieben)
+        ergebnis = self.gui.warten()
+        self.assertNotIn("error", ergebnis)
+        intr = ergebnis["intrinsic"]
+        self.assertEqual(intr["tcp_v_max"], 0.25)
+        self.assertEqual(intr["tcp_v_gemessen_max"], 0.1249)
+        self.gui.geschrieben = []
+        self.gui._seq_intrinsic_bericht(ergebnis, ergebnis["teilbahnen"])
+        text = "\n".join(t for _, t in self.gui.geschrieben)
+        # Vorgabe mal Override 50 %.
+        self.assertIn("Bahngeschwindigkeit am Tip tcp: Vorgabe 0.125 m/s, "
+                      "gemessen bis 0.1249 m/s", text)
+        self.assertIn("an 40 von 50 Pfadproben", text)
+        self.assertNotIn("keine Bahngeschwindigkeit", text)
+        self.assertNotIn("keine Bahnbeschleunigung", text)
+        # Vorgabe 0.8 mal Override 40 %; roh gehalten, abgetastet darueber.
+        self.assertIn("Bahnbeschleunigung am Tip tcp: Vorgabe 0.32 m/s^2, "
+                      "TOPP-RA roh bis 0.3900 m/s^2 (Faktor 0.9750, "
+                      "eingehalten); abgetastet bis 0.4200 m/s^2 (Faktor "
+                      "1.0500, UEBERSCHRITTEN).", text)
 
     def test_abgelehnt(self):
         os.environ["ART"] = "abgelehnt"
@@ -312,7 +364,7 @@ class Anbindung(unittest.TestCase):
     def test_nicht_tragfaehig(self):
         last = nutzlast()
         last["items"][0]["velocity_scaling"] = 0.9
-        self.gui.seq_intrinsic_parameter = (0.2, 0.004)
+        self.gui.seq_intrinsic_parameter = (0.2, 0.004, 0.2, 0.05, None, None)
         self.gui._intrinsic_send(last)
         self.assertEqual(self.gui.state, STATE_ERROR)
         self.assertFalse(self.gui.intrinsic.laeuft)
@@ -323,6 +375,21 @@ class Anbindung(unittest.TestCase):
         self.gui.seq_rot_var = Var("0")
         self.assertFalse(self.gui._seq_intrinsic_bereit())
         self.gui.seq_rot_var = Var("0.1")
+        # Der Wrapper verlangt beide Gelenkraum-Werte > 0.
+        for var in ("seq_ueberschleifen_var", "seq_abtastung_var"):
+            alt = getattr(self.gui, var)
+            for falsch in ("0", "-0.1", "abc"):
+                setattr(self.gui, var, Var(falsch))
+                self.assertFalse(self.gui._seq_intrinsic_bereit(), var)
+            setattr(self.gui, var, alt)
+        # v_bahn, a_bahn: leer ist gueltig (keine Grenze), Unsinn nicht.
+        for var, zuviel in (("seq_tcp_v_var", "100"),
+                            ("seq_tcp_a_var", "1000")):
+            for falsch in ("0", "-0.1", "abc", zuviel):
+                setattr(self.gui, var, Var(falsch))
+                self.assertFalse(self.gui._seq_intrinsic_bereit(),
+                                 (var, falsch))
+            setattr(self.gui, var, Var(""))
         os.environ["INTRINSIC_WRAPPER"] = self.params      # nicht ausfuehrbar
         self.assertFalse(self.gui._seq_intrinsic_bereit())
         self.assertIn("Wrapper", self.gui.protokoll[-1][1])

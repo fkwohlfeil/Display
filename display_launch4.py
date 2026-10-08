@@ -60,10 +60,12 @@ def generate_launch_description():
 
         DeclareLaunchArgument(
             "urdf", default_value=DEFAULT_URDF,
-            description="/home/fwohlfeil/ros2_ws/src/bmkinematic_describtion/urdf/bmkKinematic.urdf"),
+            description="URDF des Roboters (Standard: bmKinematic.urdf "
+                        "neben diesem Skript)"),
         DeclareLaunchArgument(
             "rviz_config", default_value=DEFAULT_RVIZ,
-            description="/home/fwohlfeil/Display/display2.rviz"),
+            description="RViz-Konfiguration (Standard: display2.rviz "
+                        "neben diesem Skript)"),
         DeclareLaunchArgument(
             "rviz", default_value="true",
             description="RViz2 mitstarten"),

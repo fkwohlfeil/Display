@@ -19,8 +19,9 @@ from kinematik import (local_transform)
 from moveit_konfig import (PLAN_TIMEOUT_MARGIN_S)
 from bahn import (IK_TIMEOUT_MARGIN_S, JOB_RATE_HZ, SPIN_ERROR_LIMIT)
 
-# Muss zu MODUL_STAENDE in urdf_gui2_1.py passen.
-STAND = 1
+# Muss zu MODUL_STAENDE in urdf_gui.py passen.
+# 2: _send_sequence nimmt nur noch Achsziele (Lage-Zweig entfernt).
+STAND = 2
 
 
 # ==========================================================================
@@ -566,21 +567,25 @@ class RosBridge:
             Folge ist ganz oder gar nicht -- das ist der Grund, aus dem die
             Pruefung vorher so ausfuehrlich ist.
 
-        Ein Ziel kommt auf zwei Wegen herein. Stehen Achswerte da, wird eine
-        JointConstraint gebaut wie beim einzelnen Auftrag. Steht eine Lage
-        da, wird sie zu einer Kugel um den Ort und einer Drehbedingung -- und
-        move_group rechnet die Rueckwaertskinematik selbst. Bei sieben Achsen
-        heisst das, dass der Konfigurationszweig nicht gesichert ist. Der
-        Fall steht deshalb ausdruecklich hier und nicht als stiller Zweig.
+        Jedes Ziel traegt Achswerte und wird zu einer JointConstraint wie beim
+        einzelnen Auftrag. Bis 2.2 stand hier daneben ein Zweig fuer Lageziele,
+        dessen Schluessel nicht zu dem passten, was sequenz.Folge.nutzlast
+        schrieb; erreichbar war er nicht. Seit 2.3 lehnt nutzlast eine Lage
+        ohne Achswerte ab, und hier wird ein Posten ohne "goal" als Fehler
+        zurueckgemeldet statt mit leerer Bedingung geplant.
         """
         from moveit_msgs.srv import GetMotionSequence
         from moveit_msgs.msg import (Constraints, JointConstraint,
-                                     MotionSequenceItem, OrientationConstraint,
-                                     PositionConstraint)
-        from geometry_msgs.msg import Pose
-        from shape_msgs.msg import SolidPrimitive
+                                     MotionSequenceItem)
 
         tag = payload.get("tag")
+        ohne = [eintrag.get("name", "?") for eintrag in payload["items"]
+                if not eintrag.get("goal")]
+        if ohne:
+            self.results.append(("sequence", {
+                "tag": tag,
+                "error": f"Posten ohne Achsziel: {', '.join(ohne)}"}))
+            return
         if self._sequence_client is None:
             self._sequence_client = self.node.create_client(
                 GetMotionSequence, "/plan_sequence_path")
@@ -616,51 +621,14 @@ class RosBridge:
 
             toleranz = float(eintrag["tolerance"])
             goal = Constraints()
-            achsen = eintrag.get("goal")
-            if achsen:
-                for name, value in achsen.items():
-                    constraint = JointConstraint()
-                    constraint.joint_name = name
-                    constraint.position = float(value)
-                    constraint.tolerance_above = toleranz
-                    constraint.tolerance_below = toleranz
-                    constraint.weight = 1.0
-                    goal.joint_constraints.append(constraint)
-            else:
-                lage = eintrag["pose"]
-                ort = PositionConstraint()
-                ort.header.frame_id = lage["frame"]
-                ort.link_name = lage["tip"]
-                kugel = SolidPrimitive()
-                kugel.type = SolidPrimitive.SPHERE
-                kugel.dimensions = [float(lage["position_tolerance"])]
-                ort.constraint_region.primitives.append(kugel)
-                mitte = Pose()
-                px, py, pz = lage["position"]
-                mitte.position.x = float(px)
-                mitte.position.y = float(py)
-                mitte.position.z = float(pz)
-                # Die Kugel ist drehsymmetrisch; die Drehung des Bereichs hat
-                # keine Bedeutung. Eine gueltige Einheitsdrehung muss aber
-                # dastehen, sonst ist das Quaternion die Null.
-                mitte.orientation.w = 1.0
-                ort.constraint_region.primitive_poses.append(mitte)
-                ort.weight = 1.0
-                goal.position_constraints.append(ort)
-
-                drehung = OrientationConstraint()
-                drehung.header.frame_id = lage["frame"]
-                drehung.link_name = lage["tip"]
-                qx, qy, qz, qw = lage["orientation"]
-                drehung.orientation.x = float(qx)
-                drehung.orientation.y = float(qy)
-                drehung.orientation.z = float(qz)
-                drehung.orientation.w = float(qw)
-                drehung.absolute_x_axis_tolerance = toleranz
-                drehung.absolute_y_axis_tolerance = toleranz
-                drehung.absolute_z_axis_tolerance = toleranz
-                drehung.weight = 1.0
-                goal.orientation_constraints.append(drehung)
+            for name, value in eintrag["goal"].items():
+                constraint = JointConstraint()
+                constraint.joint_name = name
+                constraint.position = float(value)
+                constraint.tolerance_above = toleranz
+                constraint.tolerance_below = toleranz
+                constraint.weight = 1.0
+                goal.joint_constraints.append(constraint)
             plan.goal_constraints.append(goal)
             request.request.items.append(item)
 

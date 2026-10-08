@@ -32,14 +32,40 @@ elif modus == "lin_neuabtastung":
     antwort = {"ok": True, "posen": auftrag["posen"],
                "behalten_indizes": list(range(len(auftrag["posen"]))),
                "gelenk_abtastschritt_rad": 0.05}
+elif modus == "toppra_proben":
+    # Proben = die Punkte selbst, dq/ds = Abstand zum naechsten (am Ende 0),
+    # d2q/ds2 = 0.
+    teile = []
+    for teil in auftrag["teilpfade"]:
+        qp = [[b - a for a, b in zip(p, n)] for p, n in zip(teil, teil[1:])]
+        qp.append([0.0] * len(teil[0]))
+        teile.append({"q": teil, "qp": qp,
+                      "qpp": [[0.0] * len(p) for p in teil],
+                      "pruefsumme": sum(sum(p) for p in teil)})
+    antwort = {"ok": True, "teilpfade": teile}
 else:
     punkte = [p for teil in auftrag["teilpfade"] for p in teil]
-    antwort = {"ok": True, "stand": 2, "gelenke": auftrag["gelenke"],
-               "punkte": [[0.1 * i, p, [0.0] * len(p)]
+    # Mit Bahngrenzen faehrt der Ersatz mit halber Vorgabe auf j1.
+    v = (0.5 * auftrag["tcp_v_max"] * auftrag["velocity_scaling"]
+         if "tcp_v_max" in auftrag else 0.0)
+    a = (0.5 * auftrag["tcp_a_max"] * auftrag["acceleration_scaling"]
+         if "tcp_a_max" in auftrag else 0.0)
+    def null(p, w):
+        return [w] + [0.0] * (len(p) - 1)
+    antwort = {"ok": True, "stand": 3, "gelenke": auftrag["gelenke"],
+               "punkte": [[0.1 * i, p, null(p, v)]
                           for i, p in enumerate(punkte)],
+               "beschleunigungen": [null(p, a) for p in punkte],
                "teilbahnen": [len(t) for t in auftrag["teilpfade"]],
-               "abschnitte": [{"toppra_iterationen": 1}
-                              for _ in auftrag["teilpfade"]]}
+               "abschnitte": [dict({"toppra_iterationen": 1},
+                                   **({"tcp_massgeblich_proben": len(t) - 1}
+                                      if "tcp_v_max" in auftrag else {}))
+                              for t in auftrag["teilpfade"]]}
+    if auftrag.get("roh_ausgeben"):
+        # Roh 10 % unter der abgetasteten Beschleunigung.
+        antwort["roh"] = [[[0.1 * i, p, null(p, v), null(p, 0.9 * a)]
+                           for i, p in enumerate(t)]
+                          for t in auftrag["teilpfade"]]
 json.dump(antwort, open(sys.argv[2], "w"))
 '''
 
@@ -157,9 +183,162 @@ class Rechne(unittest.TestCase):
     def test_abgelehnt(self):
         for aenderung, wort in (({"stand": R.STAND + 1}, "Stand"),
                                 ({"fahrarten": ["LIN"]}, "Fahrarten"),
-                                ({"fahrarten": ["LIN", "CIRC"]}, "CIRC")):
+                                ({"fahrarten": ["LIN", "CIRC"]}, "CIRC"),
+                                ({"tcp_v_max": 0.0}, "tcp_v_max"),
+                                ({"tcp_v_max": "schnell"}, "tcp_v_max"),
+                                ({"tcp_a_max": -1.0}, "tcp_a_max")):
             with self.assertRaisesRegex(R.LinFehler, wort, msg=aenderung):
                 self.rechne(auftrag(**aenderung), Kinematik())
+
+    def test_bahngeschwindigkeit(self):
+        kinematik = Kinematik()
+        antwort, toppra, dateien = self.rechne(auftrag(tcp_v_max=0.4),
+                                               kinematik)
+        # Erst die Proben, dann TOPP-RA mit x, dx/ds, d2x/ds2 daran.
+        self.assertIn("toppra_proben_auftrag.json", dateien)
+        self.assertEqual(toppra["tcp_v_max"], 0.4)
+        self.assertNotIn("tcp_a_max", toppra)
+        self.assertFalse(toppra["roh_ausgeben"])
+        # Identitaet als FK: x = q, dx/ds = Abstand zum naechsten Punkt,
+        # d2x/ds2 = 0.
+        self.assertEqual(len(toppra["tcp_xp"]), 2)
+        for teil, x, xp, xpp in zip(toppra["teilpfade"], toppra["tcp_x"],
+                                    toppra["tcp_xp"], toppra["tcp_xpp"]):
+            erwartet = [[b - a for a, b in zip(p, n)]
+                        for p, n in zip(teil, teil[1:])] + [[0.0] * 3]
+            for ist, soll in zip(x, teil):
+                self.assertEqual(ist, soll)
+            for ist, soll in zip(xp, erwartet):
+                for a, b in zip(ist, soll):
+                    self.assertAlmostEqual(a, b, places=9)
+            for ist in xpp:
+                for a in ist:
+                    self.assertAlmostEqual(a, 0.0, places=6)
+        self.assertEqual(toppra["tcp_pruefsummen"],
+                         [sum(sum(p) for p in t) for t in toppra["teilpfade"]])
+        # Nachgemessen an der Bahn: halbe wirksame Vorgabe (0.4 * 0.5).
+        pruefung = antwort["tcp_pruefung"]
+        self.assertAlmostEqual(pruefung["v_max_m_s"], 0.1, places=9)
+        self.assertAlmostEqual(pruefung["v_vorgabe_m_s"], 0.2)
+        self.assertTrue(pruefung["v_eingehalten"])
+        self.assertNotIn("a_eingehalten", pruefung)
+        self.assertNotIn("a_roh_max_m_s2", pruefung)
+        self.assertEqual(pruefung["massgeblich_proben"], 1 + 2)
+        self.assertEqual(antwort["lin_vorgaben"]["tcp_v_max"], 0.4)
+        self.assertIsNone(antwort["lin_vorgaben"]["tcp_a_max"])
+        self.assertIn("tcp_fk", antwort["herkunft"])
+
+    def test_bahnbeschleunigung(self):
+        antwort, toppra, dateien = self.rechne(auftrag(tcp_a_max=2.0),
+                                               Kinematik())
+        self.assertIn("toppra_proben_auftrag.json", dateien)
+        self.assertEqual(toppra["tcp_a_max"], 2.0)
+        self.assertNotIn("tcp_v_max", toppra)
+        # Fuer die Messung vor der Abtastung -- aber nicht in der Antwort,
+        # wenn sie keiner verlangt hat.
+        self.assertTrue(toppra["roh_ausgeben"])
+        self.assertNotIn("roh", antwort)
+        pruefung = antwort["tcp_pruefung"]
+        # Halbe wirksame Vorgabe (2.0 * 0.5), roh 10 % darunter.
+        self.assertAlmostEqual(pruefung["a_vorgabe_m_s2"], 1.0)
+        self.assertAlmostEqual(pruefung["a_max_m_s2"], 0.5, places=6)
+        self.assertAlmostEqual(pruefung["a_roh_max_m_s2"], 0.45, places=6)
+        self.assertTrue(pruefung["a_eingehalten"])
+        self.assertTrue(pruefung["a_roh_eingehalten"])
+        self.assertEqual(pruefung["roh_punkte"], 2 + 3)
+        self.assertNotIn("massgeblich_proben", pruefung)
+        self.assertEqual(antwort["lin_vorgaben"]["tcp_a_max"], 2.0)
+
+    def test_roh_bleibt_wenn_verlangt(self):
+        antwort, _, _ = self.rechne(auftrag(tcp_a_max=2.0, roh_ausgeben=True),
+                                    Kinematik())
+        self.assertIn("roh", antwort)
+
+    def test_ohne_bahngrenze_keine_proben(self):
+        antwort, toppra, dateien = self.rechne(auftrag(), Kinematik())
+        self.assertNotIn("toppra_proben_auftrag.json", dateien)
+        self.assertNotIn("tcp_v_max", toppra)
+        self.assertNotIn("tcp_xp", toppra)
+        self.assertNotIn("tcp_pruefung", antwort)
+        self.assertIsNone(antwort["lin_vorgaben"]["tcp_v_max"])
+
+    def test_nur_ptp_mit_bahngrenze_braucht_fk(self):
+        for grenze in ({"tcp_v_max": 0.4}, {"tcp_a_max": 2.0}):
+            daten = auftrag(abschnitte=[[0, 3]], fahrarten=["PTP"], **grenze)
+            # Ohne Kinematik faehrt MoveItKinematik hoch (hier: KeinMoveIt).
+            with self.assertRaises(AssertionError):
+                self.rechne(daten)
+            kinematik = Kinematik()
+            antwort, toppra, _ = self.rechne(daten, kinematik)
+            self.assertEqual(kinematik.ik_aufrufe, 0)
+            self.assertIn("tcp_xp", toppra)
+
+
+class Bahngeschwindigkeit(unittest.TestCase):
+
+    def test_tip_ableitung(self):
+        k = Kinematik()
+        self.assertAlmostEqual(
+            R.tip_ableitung(k, [1.0, 2.0, 3.0], [3.0, 4.0, 0.0]), 5.0,
+            places=9)
+        self.assertEqual(R.tip_ableitung(k, [1.0, 2.0, 3.0], [0, 0, 0]), 0.0)
+
+    def test_tip_ableitung_mit_mimic(self):
+        # Wie MoveIt: j2 folgt j1 mit Faktor -1 und geht in die Lage ein.
+        class Gekoppelt(Kinematik):
+            def fk(self, lagen):
+                j1 = lagen[0]
+                return [j1, -j1, 0.0, 0.0, 0.0, 0.0, 1.0]
+        self.assertAlmostEqual(
+            R.tip_ableitung(Gekoppelt(), [0.3], [1.0]), math.sqrt(2.0),
+            places=9)
+
+    def test_zweite_ableitung_auf_dem_kreis(self):
+        # x = (cos q, sin q): entlang q(h) = q0 + 2h + 3h^2/2 ist
+        # |dx/dh| = 2 und d2x/dh2 = 3 tangential - 4 normal, Betrag 5.
+        class Kreis(Kinematik):
+            def fk(self, lagen):
+                return [math.cos(lagen[0]), math.sin(lagen[0]), 0.0,
+                        0.0, 0.0, 0.0, 1.0]
+        x, erste, zweite = R.tip_ableitungen(Kreis(), [0.7], [2.0], [3.0])
+        self.assertAlmostEqual(x[0], math.cos(0.7), places=12)
+        self.assertAlmostEqual(math.hypot(*erste), 2.0, places=7)
+        self.assertAlmostEqual(math.hypot(*zweite), 5.0, places=5)
+        # Nur d2 (Anfahren aus dem Stillstand): d2x = 3 tangential.
+        _x, erste, zweite = R.tip_ableitungen(Kreis(), [0.7], [0.0], [3.0])
+        self.assertAlmostEqual(math.hypot(*erste), 0.0, places=7)
+        self.assertAlmostEqual(math.hypot(*zweite), 3.0, places=5)
+        # Ruht alles: beide null, ohne Teilen durch null.
+        _x, erste, zweite = R.tip_ableitungen(Kreis(), [0.7], [0.0], [0.0])
+        self.assertEqual((erste, zweite), ([0.0] * 3, [0.0] * 3))
+
+    def test_pruefung_zaehlt_darueber(self):
+        k = Kinematik()
+        punkte = [[0.0, [0, 0, 0], [0.1, 0, 0]],
+                  [0.1, [0, 0, 0], [0.25, 0, 0]],
+                  [0.2, [0, 0, 0], [0.2001, 0, 0]]]
+        beschleunigungen = [[0, 0, 0], [0, 3.0, 0], [0, 0, 0]]
+        roh = [[[0.0, [0, 0, 0], [0, 0, 0], [0, 0, 1.9]]]]
+        p = R.tcp_pruefung(k, punkte, beschleunigungen, v_max=0.2,
+                           a_max=2.0, roh=roh)
+        self.assertAlmostEqual(p["v_max_m_s"], 0.25, places=9)
+        self.assertEqual(p["v_bei_s"], 0.1)
+        # 0.2001 liegt innerhalb der Toleranz, 0.25 nicht.
+        self.assertEqual(p["v_darueber"], 1)
+        self.assertFalse(p["v_eingehalten"])
+        self.assertAlmostEqual(p["v_faktor_max"], 1.25, places=9)
+        self.assertAlmostEqual(p["a_max_m_s2"], 3.0, places=5)
+        self.assertFalse(p["a_eingehalten"])
+        self.assertAlmostEqual(p["a_roh_max_m_s2"], 1.9, places=5)
+        self.assertTrue(p["a_roh_eingehalten"])
+        hinweise = R.tcp_hinweise(p)
+        self.assertEqual(len(hinweise), 2)
+        self.assertIn("Tip-Geschwindigkeit bis 0.2500", hinweise[0])
+        self.assertIn("kubische Interpolation", hinweise[1])
+        # Ohne Vorgabe nur gemessen, nichts bewertet.
+        p = R.tcp_pruefung(k, punkte, beschleunigungen)
+        self.assertNotIn("v_eingehalten", p)
+        self.assertEqual(R.tcp_hinweise(p), [])
 
 
 class Springt(Kinematik):
@@ -353,6 +532,82 @@ class Posenfehler(unittest.TestCase):
                      ordner, kinematik=Ungenau(0.02))
 
 
+class AnderesJ3(Kinematik):
+    """j3 wirkt nicht auf die Pose. Abseits des Ursprungs waehlt die IK
+    j3 = 0.01 -- gleiche Pose, anderer Ast als die Achsziele mit j3 = 0."""
+
+    def fk(self, lagen):
+        return super().fk([lagen[0], lagen[1], 0.0])
+
+    def ik(self, pose):
+        q = super().ik(pose)
+        q[2] = 0.0 if abs(pose[0]) + abs(pose[1]) < 1e-12 else 0.01
+        return q
+
+
+class AstFolgen(unittest.TestCase):
+    """Stand 5: mit ast_folgen ersetzt die Endstellung der LIN-Kette den
+    Zielwegpunkt, und die folgenden Abschnitte beginnen dort."""
+
+    def rechne(self, **aenderung):
+        ordner = tempfile.mkdtemp()
+        wrapper = os.path.join(ordner, "wrapper")
+        with open(wrapper, "w") as datei:
+            datei.write(ERSATZ_WRAPPER)
+        os.chmod(wrapper, stat.S_IRWXU)
+        daten = dict(auftrag(stand=5, abschnitte=[[0, 1], [1, 2], [2, 3]],
+                             fahrarten=["LIN", "LIN", "PTP"]),
+                     wrapper=wrapper, **aenderung)
+        antwort = R.rechne(daten, ordner, kinematik=AnderesJ3())
+        with open(os.path.join(antwort["arbeitsordner_wrapper"],
+                               "toppra_auftrag.json")) as datei:
+            toppra = json.load(datei)
+        return antwort, toppra
+
+    def test_ohne_bricht_ab(self):
+        with self.assertRaisesRegex(R.LinFehler, "anderer IK-Ast"):
+            self.rechne()
+
+    def test_folgt_dem_ast(self):
+        antwort, toppra = self.rechne(ast_folgen=True)
+        pfade = toppra["teilpfade"]
+        self.assertEqual(pfade[0][-1], [0.5, 0.0, 0.01])
+        # Der zweite LIN-Abschnitt beginnt am erreichten Ast, nicht am
+        # Achsziel P1, und endet wieder auf ihm.
+        self.assertEqual(pfade[1][0], [0.5, 0.0, 0.01])
+        self.assertEqual(pfade[1][-1], [0.5, 0.5, 0.01])
+        # PTP faehrt von dort im Gelenkraum zum eigenen Achsziel.
+        self.assertEqual(pfade[2], [[0.5, 0.5, 0.01], [0.5, 0.5, 0.5]])
+        self.assertTrue(antwort["ast_folgen"])
+        self.assertEqual([a["punkt"] for a in antwort["ast_gewechselt"]],
+                         ["P1", "P2"])
+        self.assertEqual(antwort["ast_gewechselt"][0]["achsziel"],
+                         [0.5, 0.0, 0.0])
+        self.assertAlmostEqual(antwort["ast_gewechselt"][0]["abweichung_rad"],
+                               0.01)
+        self.assertEqual(antwort["lin"][0]["ziel_abweichung_rad"], 0.0)
+        self.assertTrue(any("anderen IK-Ast" in h
+                            for h in antwort["hinweise"]))
+
+    def test_pose_daneben_bricht_trotzdem_ab(self):
+        class Drift(Kinematik):
+            def ik(self, pose):
+                q = super().ik(pose)
+                if self.ik_aufrufe > 1:
+                    q[0] += 0.0009
+                    q[1] += 0.0009
+                return q
+        ordner = tempfile.mkdtemp()
+        wrapper = os.path.join(ordner, "wrapper")
+        with open(wrapper, "w") as datei:
+            datei.write(ERSATZ_WRAPPER)
+        os.chmod(wrapper, stat.S_IRWXU)
+        daten = dict(auftrag(stand=5, abschnitte=[[0, 3]], fahrarten=["LIN"]),
+                     wrapper=wrapper, ast_folgen=True, ik_toleranz_m=0.002)
+        with self.assertRaisesRegex(R.LinFehler, "ungenaue IK"):
+            R.rechne(daten, ordner, kinematik=Drift())
+
+
 class Verbinden(unittest.TestCase):
 
     NAMEN = ["Start", "P1", "P2", "P3"]
@@ -466,7 +721,7 @@ class Mimic(unittest.TestCase):
         self.assertEqual(k.zustand.werte["joint6"], 0.0)
 
     def test_stand(self):
-        self.assertEqual(R.STAND, 4)
+        self.assertEqual(R.STAND, 6)
 
 
 if __name__ == "__main__":

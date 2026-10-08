@@ -66,12 +66,12 @@ class Basis(unittest.TestCase):
             datei.write("x: {}\n")
 
     def frage(self, last, rot=0.1, dt=0.01, tip="tool0", params=None,
-              wrapper=None, grenzen=None):
+              wrapper=None, grenzen=None, **gelenkraum):
         grenzen = grenzen or Aufrufe()
         auftrag, befunde = I.anfrage(
             last, GELENKE, self.params if params is None else params, tip,
             rot, dt, wrapper=self.wrapper if wrapper is None else wrapper,
-            grenzen_lesen=grenzen)
+            grenzen_lesen=grenzen, **gelenkraum)
         return auftrag, befunde, grenzen
 
     def stufen(self, befunde, stufe):
@@ -99,6 +99,41 @@ class Parameter(Basis):
             befunde = I.pruefe_parameter(0.1, falsch)
             self.assertEqual(len(befunde), 1, falsch)
             self.assertIn("resample_dt", befunde[0].text)
+
+    def test_gelenkraum(self):
+        # Standard ist gueltig, die Grenzen selbst auch.
+        self.assertEqual(I.GELENK_ABTASTUNG_STANDARD, 0.05)
+        for ueber, abtast in ((I.UEBERSCHLEIFEN_MIN, I.GELENK_ABTASTUNG_MIN),
+                              (I.UEBERSCHLEIFEN_MAX, I.GELENK_ABTASTUNG_MAX),
+                              ("0.03", "0.005")):
+            self.assertEqual(I.pruefe_parameter(0.1, 0.01, ueber, abtast), ())
+        for name, unten, oben in (
+                ("ueberschleifen_rad", I.UEBERSCHLEIFEN_MIN,
+                 I.UEBERSCHLEIFEN_MAX),
+                ("gelenk_abtastung_rad", I.GELENK_ABTASTUNG_MIN,
+                 I.GELENK_ABTASTUNG_MAX)):
+            for falsch in (0.0, -0.1, unten * 0.5, oben * 1.001, "z", None):
+                befunde = I.pruefe_parameter(0.1, 0.01, **{name: falsch})
+                self.assertEqual(len(befunde), 1, (name, falsch))
+                self.assertEqual(befunde[0].stufe, sequenz.FEHLER)
+                self.assertIn(name, befunde[0].text)
+
+    def test_bahngrenzen(self):
+        self.assertIsNone(I.bahngrenze_lesen(""))
+        self.assertEqual(I.bahngrenze_lesen(" 0.5 "), 0.5)
+        for schluessel, feld, unten, oben in (
+                ("tcp_v_max", "v_bahn", I.TCP_V_MIN, I.TCP_V_MAX),
+                ("tcp_a_max", "a_bahn", I.TCP_A_MIN, I.TCP_A_MAX)):
+            # Leer oder None: keine Grenze, kein Befund.
+            for gut in (None, "", "  ", "0.25", 0.25, unten, oben):
+                self.assertEqual(
+                    I.pruefe_parameter(0.1, 0.01, **{schluessel: gut}), (),
+                    (schluessel, gut))
+            for falsch in (0.0, -0.1, "x", oben * 1.01, unten * 0.5):
+                befunde = I.pruefe_parameter(0.1, 0.01, **{schluessel: falsch})
+                self.assertEqual(len(befunde), 1, (schluessel, falsch))
+                self.assertEqual(befunde[0].stufe, sequenz.FEHLER)
+                self.assertIn(feld, befunde[0].text)
 
 
 class Anfrage(Basis):
@@ -190,6 +225,63 @@ class Anfrage(Basis):
         self.assertEqual(auftrag["fahrarten"], ["LIN"])
         self.assertEqual(auftrag["ueberschleifen_rad"], I.UEBERSCHLEIFEN_RAD)
         self.assertEqual(I.UEBERSCHLEIFEN_RAD, 0.2)
+        self.assertEqual(auftrag["gelenk_abtastung_rad"],
+                         I.GELENK_ABTASTUNG_STANDARD)
+
+    def test_bahngrenzen(self):
+        last = nutzlast(posten("P1", (0.5, 0, 0), 0.02, a=0.4),
+                        posten("P2", (0.5, 0.5, 0), 0.0, a=0.4))
+        # Ohne Feld: kein Schluessel, der Rechner rechnet ohne Grenze.
+        auftrag, befunde, _ = self.frage(last)
+        self.assertNotIn("tcp_v_max", auftrag)
+        self.assertNotIn("tcp_a_max", auftrag)
+        self.assertFalse(any("Bahngrenzen" in t for t in
+                             self.stufen(befunde, sequenz.HINWEIS)))
+        auftrag, befunde, _ = self.frage(last, tcp_v_max="0.3")
+        self.assertEqual(auftrag["tcp_v_max"], 0.3)
+        self.assertNotIn("tcp_a_max", auftrag)
+        hinweise = [t for t in self.stufen(befunde, sequenz.HINWEIS)
+                    if "Bahngrenzen" in t]
+        self.assertEqual(len(hinweise), 1, hinweise)
+        # Override 50 % aus den Posten.
+        self.assertIn("tool0: Geschwindigkeit hoechstens 0.3 m/s mal "
+                      "Override 50 % = 0.15 m/s.", hinweise[0])
+        self.assertNotIn("auch bei reinem PTP", hinweise[0])
+        auftrag, befunde, _ = self.frage(last, tcp_v_max=0.3, tcp_a_max="2")
+        self.assertEqual(auftrag["tcp_a_max"], 2.0)
+        hinweise = [t for t in self.stufen(befunde, sequenz.HINWEIS)
+                    if "Bahngrenzen" in t]
+        # Beschleunigungs-Override 40 %.
+        self.assertIn("; Beschleunigung hoechstens 2 m/s^2 mal Override "
+                      "40 % = 0.8 m/s^2", hinweise[0])
+        # Nur PTP: MoveItPy faehrt fuer die FK trotzdem hoch.
+        last = nutzlast(posten("P1", (0.5, 0, 0), 0.0, "PTP"),
+                        posten("P2", (0.5, 0.5, 0), 0.0, "PTP"))
+        _, befunde, _ = self.frage(last, tcp_v_max=0.3)
+        self.assertTrue(any("auch bei reinem PTP" in t for t in
+                            self.stufen(befunde, sequenz.HINWEIS)))
+        # Unsinn faellt vor den Achsgrenzen auf.
+        auftrag, befunde, grenzen = self.frage(last, tcp_v_max="schnell")
+        self.assertIsNone(auftrag)
+        self.assertEqual(grenzen.anzahl, 0)
+
+    def test_gelenkraum_aus_dem_fenster(self):
+        last = nutzlast(posten("P1", (0.5, 0, 0), 0.02),
+                        posten("P2", (0.5, 0.5, 0), 0.02),
+                        posten("P3", (0.5, 0.5, 0.5), 0.0))
+        auftrag, befunde, _ = self.frage(last, ueberschleifen_rad="0.01",
+                                         gelenk_abtastung_rad=0.002)
+        self.assertEqual(auftrag["ueberschleifen_rad"], 0.01)
+        self.assertEqual(auftrag["gelenk_abtastung_rad"], 0.002)
+        # Der Hinweis nennt die eingestellten Werte, nicht die Standards.
+        self.assertTrue(any("Abtastung 0.002 rad, Ueberschleifen 0.01 rad"
+                            in t for t in self.stufen(befunde,
+                                                      sequenz.HINWEIS)))
+        # Ein falscher Wert verhindert den Auftrag.
+        auftrag, befunde, _ = self.frage(last, ueberschleifen_rad=0.0)
+        self.assertIsNone(auftrag)
+        self.assertTrue(any("ueberschleifen_rad" in t for t in
+                            self.stufen(befunde, sequenz.FEHLER)))
 
     def test_circ_ist_fehler(self):
         last = nutzlast(posten("P1", (0.5, 0, 0), 0.02, fahrart="PTP"),
@@ -237,7 +329,8 @@ class Anfrage(Basis):
         self.assertTrue(any(t.startswith("PTP ueberschliffen im Gelenkraum "
                                          "mit 0.2 rad: P3.")
                             for t in hinweise), hinweise)
-        self.assertEqual(auftrag["stand"], 4)
+        self.assertEqual(auftrag["stand"], 6)
+        self.assertIs(auftrag["ast_folgen"], True)
 
     def test_wechsel_mit_umkehr_haelt(self):
         # P1 hat Radius, der Wechsel LIN -> PTP kehrt aber um: Halt.
@@ -449,6 +542,33 @@ class Antwort(unittest.TestCase):
         self.assertEqual(i["fahrarten"], ["PTP", "LIN"])
         self.assertEqual(i["pfadpunkte"], [3, 9])
         self.assertEqual(i["ik_sprung_max_rad"], 0.02)
+
+    def test_bahngrenzen(self):
+        i = I.antwort_lesen(antwort(), GELENKE)["intrinsic"]
+        self.assertIsNone(i["tcp_v_max"])
+        self.assertIsNone(i["tcp_v_gemessen_max"])
+        self.assertIsNone(i["tcp_a_max"])
+        i = I.antwort_lesen(antwort(
+            lin_vorgaben={"tcp_v_max": 0.3, "tcp_a_max": 2.0},
+            tcp_pruefung={"v_max_m_s": 0.149, "v_faktor_max": 0.993,
+                          "v_eingehalten": True, "massgeblich_proben": 80,
+                          "proben": 120, "a_max_m_s2": 2.1,
+                          "a_faktor_max": 1.05, "a_eingehalten": False,
+                          "a_roh_max_m_s2": 1.9, "a_roh_faktor_max": 0.95,
+                          "a_roh_eingehalten": True}), GELENKE)["intrinsic"]
+        self.assertEqual(i["tcp_v_max"], 0.3)
+        self.assertEqual(i["tcp_v_gemessen_max"], 0.149)
+        self.assertEqual(i["tcp_v_faktor_max"], 0.993)
+        self.assertIs(i["tcp_v_eingehalten"], True)
+        self.assertEqual(i["tcp_massgeblich_proben"], 80)
+        self.assertEqual(i["tcp_proben"], 120)
+        self.assertEqual(i["tcp_a_max"], 2.0)
+        self.assertEqual(i["tcp_a_gemessen_max"], 2.1)
+        self.assertEqual(i["tcp_a_faktor_max"], 1.05)
+        self.assertIs(i["tcp_a_eingehalten"], False)
+        self.assertEqual(i["tcp_a_roh_max"], 1.9)
+        self.assertEqual(i["tcp_a_roh_faktor_max"], 0.95)
+        self.assertIs(i["tcp_a_roh_eingehalten"], True)
 
     def test_ohne_lin(self):
         i = I.antwort_lesen(antwort(lin=[]), GELENKE)["intrinsic"]

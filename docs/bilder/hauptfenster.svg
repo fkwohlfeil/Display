@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600">
+  <style>
+    text { font-family: 'Segoe UI', Ubuntu, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; fill: #1f2933; }
+    .m { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: 9.5px; }
+    .h { font-size: 9px; font-weight: 700; fill: #6b7480; letter-spacing: .5px; }
+    .s { font-size: 9.5px; fill: #6b7480; }
+    .card { fill: #ffffff; stroke: #d5dbe3; }
+    .btn { fill: #e3e8ef; stroke: #d5dbe3; }
+    .ent { fill: #ffffff; stroke: #c3cad3; }
+    .num { fill: #d13438; }
+    .nt { fill: #ffffff; font-weight: 700; font-size: 11px; }
+    .ok { fill: #1a7f37; }
+    .warn { fill: #9a6700; }
+    .tm { fill: #9aa3ad; }
+    text { white-space: pre; }
+    .m text { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: inherit; }
+  </style>
+
+  <rect x="1" y="1" width="898" height="598" rx="8" fill="#eef1f5" stroke="#9aa3ad"/>
+  <path d="M1,9 a8,8 0 0 1 8,-8 h882 a8,8 0 0 1 8,8 v18 h-898 z" fill="#dfe4ea"/>
+  <text x="14" y="19" style="font-weight:700">URDF Viewer</text>
+
+  <!-- Kopf -->
+  <rect x="12" y="36" width="876" height="190" rx="3" class="card"/>
+  <rect x="24" y="48" width="80" height="166" rx="3" fill="#d13438"/>
+  <text x="64" y="136" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:16px">STOP</text>
+  <text x="118" y="66" style="font-weight:700;font-size:16px">my_robot</text>
+  <text x="200" y="65" class="s">12 Links   |   11 Gelenke, 7 beweglich   |   Wurzel base_link</text>
+  <rect x="118" y="76" width="600" height="138" fill="#fbfcfd" stroke="#d5dbe3"/>
+  <text x="128" y="94"  class="m"><tspan class="tm">09:14:02  </tspan><tspan class="ok">Roboter my_robot initialisiert, 12 Links, 11 Gelenke</tspan></text>
+  <text x="128" y="111" class="m"><tspan class="tm">09:14:02  </tspan><tspan class="ok">12 Frames auf /tf mit 30 Hz (7 beweglich), robot_description und /joint_states gesendet</tspan></text>
+  <text x="128" y="128" class="m"><tspan class="tm">09:14:20  </tspan><tspan class="ok">move_group gestartet als move_group_gui4711_1 (PID 4712) …</tspan></text>
+  <text x="128" y="145" class="m"><tspan class="tm">09:14:26  </tspan><tspan class="ok">move_group antwortet, Planung steht bereit</tspan></text>
+  <text x="128" y="162" class="m"><tspan class="tm">09:15:03  </tspan>Moved to  X   0.4120 Y   0.0000 Z   0.8810 m   A 0.00 B 90.00 C 0.00 deg  ZYX</text>
+  <text x="128" y="179" class="m"><tspan class="tm">09:15:40  </tspan><tspan class="warn">2 Wert(e) auf das URDF-Limit begrenzt</tspan></text>
+  <text x="128" y="196" class="m"><tspan class="tm">09:16:12  </tspan>Zustand PLANEN  PTP</text>
+
+  <g>
+    <rect x="732" y="46"  width="144" height="19" rx="2" class="btn"/><text x="804" y="59"  text-anchor="middle">Laden...</text>
+    <rect x="732" y="68"  width="144" height="19" rx="2" class="btn"/><text x="804" y="81"  text-anchor="middle">Bearbeiten...</text>
+    <rect x="732" y="90"  width="144" height="19" rx="2" class="btn"/><text x="804" y="103" text-anchor="middle">Fahren...</text>
+    <rect x="732" y="112" width="144" height="19" rx="2" class="btn"/><text x="804" y="125" text-anchor="middle">Punktfolge...</text>
+    <rect x="732" y="134" width="144" height="19" rx="2" class="btn"/><text x="804" y="147" text-anchor="middle">Parameter...</text>
+    <rect x="732" y="156" width="144" height="19" rx="2" fill="#eef1f5" stroke="#d5dbe3"/><text x="804" y="169" text-anchor="middle" style="fill:#a8b0ba">Speichern</text>
+    <rect x="732" y="178" width="144" height="19" rx="2" class="btn"/><text x="804" y="191" text-anchor="middle">Speichern unter...</text>
+    <rect x="734" y="204" width="10" height="10" rx="2" fill="#2563c9"/><text x="750" y="213">TF senden</text>
+  </g>
+
+  <!-- links: Gelenke / Links -->
+  <rect x="12" y="234" width="70" height="20" fill="#ffffff" stroke="#d5dbe3"/><text x="47" y="248" text-anchor="middle">Gelenke</text>
+  <rect x="82" y="234" width="52" height="20" fill="#eef1f5" stroke="#d5dbe3"/><text x="108" y="248" text-anchor="middle" class="s">Links</text>
+  <rect x="12" y="254" width="280" height="260" class="card"/>
+  <rect x="12" y="254" width="280" height="20" fill="#eaeef3"/>
+  <text x="18" y="268" class="h">GELENK</text><text x="74" y="268" class="h">TYP</text><text x="130" y="268" class="h">RAD/M</text><text x="178" y="268" class="h">GRAD</text><text x="222" y="268" class="h">GRENZEN</text>
+  <g class="m">
+    <text x="18" y="290">joint1</text><text x="74" y="290">revolute</text><text x="130" y="290">0.0000</text><text x="178" y="290">0.00</text><text x="222" y="290">-170..170</text>
+    <rect x="13" y="296" width="278" height="22" fill="#f7f9fb"/>
+    <text x="18" y="311">joint2</text><text x="74" y="311">revolute</text><text x="130" y="311">0.5236</text><text x="178" y="311">30.00</text><text x="222" y="311">-120..120</text>
+    <text x="18" y="333">joint3</text><text x="74" y="333">revolute</text><text x="130" y="333">0.0000</text><text x="178" y="333">0.00</text><text x="222" y="333">-170..170</text>
+    <rect x="13" y="340" width="278" height="22" fill="#f7f9fb"/>
+    <text x="18" y="355">joint4</text><text x="74" y="355">revolute</text><text x="130" y="355">0.0000</text><text x="178" y="355">0.00</text><text x="222" y="355">-120..120</text>
+    <text x="18" y="377">joint5</text><text x="74" y="377">revolute</text><text x="130" y="377">0.0000</text><text x="178" y="377">0.00</text><text x="222" y="377">-170..170</text>
+    <rect x="13" y="384" width="278" height="22" fill="#f7f9fb"/>
+    <text x="18" y="399">tool_fix</text><text x="74" y="399">fixed</text><text x="130" y="399">-</text><text x="178" y="399">-</text><text x="222" y="399">-</text>
+  </g>
+
+  <!-- Mitte: FRAMES -->
+  <rect x="300" y="234" width="300" height="280" class="card"/>
+  <text x="312" y="251" class="h">FRAMES</text>
+  <rect x="440" y="240" width="56" height="16" rx="2" fill="#ffffff" stroke="#d5dbe3"/><text x="468" y="251" text-anchor="middle" class="s">Aufklappen</text>
+  <rect x="500" y="240" width="54" height="16" rx="2" fill="#ffffff" stroke="#d5dbe3"/><text x="527" y="251" text-anchor="middle" class="s">Einklappen</text>
+  <rect x="558" y="240" width="36" height="16" rx="2" fill="#ffffff" stroke="#d5dbe3"/><text x="576" y="251" text-anchor="middle" class="s">Ausbl.</text>
+  <rect x="301" y="260" width="298" height="18" fill="#eaeef3"/>
+  <text x="308" y="273" class="h">FRAME</text><text x="400" y="273" class="h">X [M]</text><text x="446" y="273" class="h">Y [M]</text><text x="492" y="273" class="h">Z [M]</text><text x="534" y="273" class="h">A</text><text x="556" y="273" class="h">B</text><text x="578" y="273" class="h">C</text>
+  <g class="m">
+    <text x="308" y="294">base_link</text><text x="400" y="294">0.000</text><text x="446" y="294">0.000</text><text x="492" y="294">0.000</text><text x="534" y="294">0</text><text x="556" y="294">0</text><text x="578" y="294">0</text>
+    <text x="316" y="316">▾ link1</text><text x="400" y="316">0.000</text><text x="446" y="316">0.000</text><text x="492" y="316">0.340</text><text x="534" y="316">0</text><text x="556" y="316">0</text><text x="578" y="316">0</text>
+    <text x="324" y="338">▾ link2</text><text x="400" y="338">0.000</text><text x="446" y="338">0.000</text><text x="492" y="338">0.340</text><text x="534" y="338">0</text><text x="556" y="338">30</text><text x="578" y="338">0</text>
+    <text x="332" y="360">▾ link3</text><text x="400" y="360">0.200</text><text x="446" y="360">0.000</text><text x="492" y="360">0.686</text><text x="534" y="360">0</text><text x="556" y="360">30</text><text x="578" y="360">0</text>
+    <text x="340" y="382">▾ flange</text><text x="400" y="382">0.412</text><text x="446" y="382">0.000</text><text x="492" y="382">0.807</text><text x="534" y="382">0</text><text x="556" y="382">90</text><text x="578" y="382">0</text>
+    <rect x="301" y="390" width="298" height="22" fill="#e6f4ea"/>
+    <text x="348" y="405">tcp11</text><text x="400" y="405">0.412</text><text x="446" y="405">0.000</text><text x="492" y="405">0.881</text><text x="534" y="405">0</text><text x="556" y="405">90</text><text x="578" y="405">0</text>
+  </g>
+
+  <!-- TCP-Zeile -->
+  <rect x="12" y="522" width="588" height="28" class="card"/>
+  <text x="22" y="540" class="m ok" style="fill:#1a7f37">TCP tcp11 gegen base_link (abgeleitet)  X 0.4120 Y 0.0000 Z 0.8810 m  A 0.0 B 90.0 C 0.0 deg ZYX</text>
+
+  <!-- rechts: Joint / Kartesisch -->
+  <rect x="610" y="234" width="80" height="20" fill="#eef1f5" stroke="#d5dbe3"/><text x="650" y="248" text-anchor="middle" class="s">Kartesisch</text>
+  <rect x="690" y="234" width="50" height="20" fill="#ffffff" stroke="#d5dbe3"/><text x="715" y="248" text-anchor="middle">Joint</text>
+  <rect x="610" y="254" width="278" height="156" class="card"/>
+  <text x="622" y="271" class="h">ACHSWERTE</text>
+  <text x="622" y="289">joint1</text><rect x="700" y="278" width="60" height="16" class="ent"/><text x="756" y="290" text-anchor="end" class="m">0.00</text><text x="766" y="290" class="s">deg</text><text x="880" y="290" text-anchor="end" class="s">-170..170</text>
+  <rect x="622" y="298" width="256" height="5" rx="2" fill="#dde3ea"/><rect x="746" y="295" width="10" height="11" rx="2" fill="#2563c9"/>
+  <text x="622" y="324">joint2</text><rect x="700" y="313" width="60" height="16" class="ent"/><text x="756" y="325" text-anchor="end" class="m">30.00</text><text x="766" y="325" class="s">deg</text><text x="880" y="325" text-anchor="end" class="s">-120..120</text>
+  <rect x="622" y="333" width="256" height="5" rx="2" fill="#dde3ea"/><rect x="782" y="330" width="10" height="11" rx="2" fill="#2563c9"/>
+  <text x="622" y="359" class="s">… je bewegliche Achse eine Zeile</text>
+  <rect x="622" y="378" width="46" height="22" rx="2" fill="#2e7d32"/><text x="645" y="393" text-anchor="middle" style="fill:#fff;font-weight:700">Go</text>
+  <rect x="674" y="378" width="84" height="22" rx="2" class="btn"/><text x="716" y="393" text-anchor="middle">Nullstellung</text>
+  <rect x="764" y="378" width="66" height="22" rx="2" class="btn"/><text x="797" y="393" text-anchor="middle">Fahren...</text>
+
+  <!-- BEWEGUNG -->
+  <rect x="610" y="416" width="278" height="70" class="card"/>
+  <text x="622" y="432" class="h">BEWEGUNG   (NEUSTART NOETIG)</text>
+  <text x="622" y="450" class="s">Bahngeschwindigkeit</text><rect x="726" y="439" width="44" height="15" class="ent"/><text x="766" y="450" text-anchor="end" class="m">1</text><text x="774" y="450" class="s">m/s</text>
+  <text x="622" y="472" class="s">Bahnbeschleunigung</text><rect x="726" y="461" width="44" height="15" class="ent"/><text x="766" y="472" text-anchor="end" class="m">2.25</text><text x="774" y="472" class="s">m/s2</text>
+  <rect x="806" y="460" width="72" height="19" rx="2" class="btn"/><text x="842" y="473" text-anchor="middle">Uebernehmen</text>
+
+  <!-- BAHN -->
+  <rect x="610" y="492" width="278" height="58" class="card"/>
+  <text x="622" y="507" class="h">BAHN</text><text x="878" y="507" text-anchor="end" class="s">25 Hz</text>
+  <rect x="622" y="514" width="82" height="20" rx="2" fill="#2e7d32"/><text x="663" y="528" text-anchor="middle" style="fill:#fff;font-weight:700">Aufzeichnen</text>
+  <rect x="710" y="514" width="64" height="20" rx="2" class="btn"/><text x="742" y="528" text-anchor="middle">Verwerfen</text>
+  <rect x="780" y="514" width="58" height="20" rx="2" class="btn"/><text x="809" y="528" text-anchor="middle">Export...</text>
+  <text x="622" y="546" class="m">  412 Punkte    16.4 s    1234.5 mm</text>
+
+  <!-- Fusszeile -->
+  <g class="m" style="fill:#6b7480">
+    <text x="16" y="580" style="fill:#6b7480">Session  00:12:31:507</text>
+    <text x="232" y="580" style="fill:#6b7480">bmKinematic.urdf</text>
+    <text x="400" y="580" style="fill:#6b7480">BEREIT</text>
+    <text x="470" y="580" style="fill:#6b7480">move_group  bereit, seit 245 s</text>
+    <text x="664" y="580" style="fill:#6b7480">Last Refresh 12.3 ms  Takt 33 ms</text>
+  </g>
+
+  <!-- Nummern -->
+  <g>
+    <circle cx="100" cy="52" r="10" class="num"/><text x="100" y="56" text-anchor="middle" class="nt">1</text>
+    <circle cx="560" cy="62" r="10" class="num"/><text x="560" y="66" text-anchor="middle" class="nt">2</text>
+    <circle cx="714" cy="84" r="10" class="num"/><text x="714" y="88" text-anchor="middle" class="nt">3</text>
+    <circle cx="884" cy="46" r="10" class="num"/><text x="884" y="50" text-anchor="middle" class="nt">4</text>
+    <circle cx="286" cy="242" r="10" class="num"/><text x="286" y="246" text-anchor="middle" class="nt">5</text>
+    <circle cx="420" cy="248" r="10" class="num"/><text x="420" y="252" text-anchor="middle" class="nt">6</text>
+    <circle cx="596" cy="530" r="10" class="num"/><text x="596" y="534" text-anchor="middle" class="nt">7</text>
+    <circle cx="884" cy="242" r="10" class="num"/><text x="884" y="246" text-anchor="middle" class="nt">8</text>
+    <circle cx="884" cy="422" r="10" class="num"/><text x="884" y="426" text-anchor="middle" class="nt">9</text>
+    <circle cx="820" cy="502" r="10" class="num"/><text x="820" y="506" text-anchor="middle" class="nt">10</text>
+    <circle cx="884" cy="576" r="10" class="num"/><text x="884" y="580" text-anchor="middle" class="nt">11</text>
+  </g>
+</svg>

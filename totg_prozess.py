@@ -14,8 +14,9 @@ import tempfile
 import time
 import totg_folge
 
-# Muss zu MODUL_STAENDE in urdf_gui2_1.py passen.
-STAND = 1
+# Muss zu MODUL_STAENDE in urdf_gui.py passen.
+# 2: BAHN_VIEWER ist nach einstellungen.py gewandert.
+STAND = 2
 
 
 # ==========================================================================
@@ -30,9 +31,6 @@ TOTG_RECHNER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # Neustart von move_group die alten Ordner ab und darf dabei keinen
 # erwischen, in dem gerade gerechnet wird.
 TOTG_PREFIX = "urdf_gui_totg_"
-
-# Die Bahnansicht, die beide CSVs nebeneinander zeigt.
-BAHN_VIEWER = "bahn_viewer4.py"
 
 
 class TotgProzess:

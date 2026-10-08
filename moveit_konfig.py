@@ -15,8 +15,9 @@ import time
 
 from kinematik import (leaf_links, root_links)
 
-# Muss zu MODUL_STAENDE in urdf_gui2_1.py passen.
-STAND = 1
+# Muss zu MODUL_STAENDE in urdf_gui.py passen.
+# 2: PLAN_FIELDS ohne goal_position_tol, max_step, jump_threshold.
+STAND = 2
 
 
 # ==========================================================================
@@ -125,15 +126,21 @@ KDL_POSITION_ONLY_DEFAULT = False
 
 # Werte, die pro Auftrag in den MotionPlanRequest wandern. Sie brauchen
 # keinen Neustart, deshalb stehen sie getrennt von allem anderen.
+#
+# Seit 2.3 ohne goal_position_tol, max_step und jump_threshold. Sie wurden
+# geprueft und angezeigt, gingen aber in keinen Auftrag ein: Ziele gehen
+# seit 3.2 nur noch als Achswerte hinaus, und die LIN-Abtastung von Pilz
+# steuert sampling_time, nicht ein Stuetzpunktabstand. Ein Feld ohne
+# Wirkung laedt zu Messreihen ein, die nichts messen.
+#
+# goal_orientation_tol behaelt seinen Schluessel, heisst aber, was er tut:
+# die Toleranz jeder JointConstraint, also eine Achs-Zieltoleranz.
 PLAN_FIELDS = [
     ("velocity_scaling",     "Override Geschwindigkeit", "%",   100.0),
     ("acceleration_scaling", "Override Beschleunigung",  "%",   100.0),
     ("planning_time",        "Planungszeit",             "s",     5.0),
     ("planning_attempts",    "Versuche",                 "",      1.0),
-    ("goal_position_tol",    "Zieltoleranz Lage",        "m",   0.001),
-    ("goal_orientation_tol", "Zieltoleranz Drehung",     "deg",  0.100),
-    ("max_step",             "Stuetzpunktabstand LIN",   "m",   0.010),
-    ("jump_threshold",       "Sprungschwelle",           "",      2.0),
+    ("goal_orientation_tol", "Zieltoleranz Achsen",      "deg",  0.100),
     ("blend_radius",         "Ueberschleifradius",       "m",   0.000),
 ]
 

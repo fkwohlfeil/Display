@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 500" width="820" height="500">
+  <style>
+    text { font-family: 'Segoe UI', Ubuntu, 'DejaVu Sans', Arial, sans-serif; font-size: 11px; fill: #1f2933; }
+    .m { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: 9.5px; }
+    .h { font-size: 9px; font-weight: 700; fill: #6b7480; letter-spacing: .5px; }
+    .s { font-size: 9.5px; fill: #6b7480; }
+    .card { fill: #ffffff; stroke: #d5dbe3; }
+    .btn { fill: #e3e8ef; stroke: #d5dbe3; }
+    .grid { stroke: #e2e7ee; stroke-width: 1; }
+    .num { fill: #d13438; }
+    .nt { fill: #ffffff; font-weight: 700; font-size: 11px; }
+    .cb { fill: #2563c9; }
+    .cbo { fill: #ffffff; stroke: #9aa3ad; }
+    text { white-space: pre; }
+    .m text { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: inherit; }
+  </style>
+
+  <rect x="1" y="1" width="818" height="498" rx="8" fill="#eef1f5" stroke="#9aa3ad"/>
+  <path d="M1,9 a8,8 0 0 1 8,-8 h802 a8,8 0 0 1 8,8 v18 h-818 z" fill="#dfe4ea"/>
+  <text x="14" y="19" style="font-weight:700">Bahnansicht</text>
+
+  <!-- Toolbar -->
+  <rect x="12" y="34" width="796" height="30" rx="3" class="card"/>
+  <rect x="20"  y="40" width="74" height="18" rx="2" class="btn"/><text x="57"  y="53" text-anchor="middle">CSV laden...</text>
+  <rect x="98"  y="40" width="80" height="18" rx="2" class="btn"/><text x="138" y="53" text-anchor="middle">Hinzufuegen...</text>
+  <rect x="182" y="40" width="62" height="18" rx="2" class="btn"/><text x="213" y="53" text-anchor="middle">Neu laden</text>
+  <text x="258" y="53" class="s">Ansicht</text>
+  <rect x="296" y="40" width="74" height="18" fill="#ffffff" stroke="#c3cad3"/><text x="302" y="53">Iso</text><text x="364" y="53" class="s" text-anchor="end">▾</text>
+  <rect x="374" y="40" width="62" height="18" rx="2" class="btn"/><text x="405" y="53" text-anchor="middle">Einpassen</text>
+  <rect x="448" y="40" width="58" height="18" rx="2" class="btn"/><text x="477" y="53" text-anchor="middle">Raeume...</text>
+  <rect x="510" y="40" width="94" height="18" rx="2" class="btn"/><text x="557" y="53" text-anchor="middle">Bild speichern...</text>
+  <rect x="608" y="40" width="54" height="18" rx="2" class="btn"/><text x="635" y="53" text-anchor="middle">Toolbox</text>
+  <text x="800" y="53" text-anchor="end" class="m" style="fill:#6b7480">plan_pilz_….csv  +1</text>
+
+  <!-- Szene -->
+  <rect x="12" y="70" width="796" height="380" rx="3" fill="#fbfcfd" stroke="#d5dbe3"/>
+  <g>
+    <path class="grid" d="M200,380 L440,300 M240,393 L480,313 M280,406 L520,326 M320,419 L560,339 M360,432 L600,352"/>
+    <path class="grid" d="M200,380 L360,432 M260,360 L420,412 M320,340 L480,392 M380,320 L540,372 M440,300 L600,352"/>
+    <path d="M300,390 L300,345" stroke="#2563c9" stroke-width="2"/>
+    <path d="M300,390 L340,403" stroke="#c0392b" stroke-width="2"/>
+    <path d="M300,390 L262,402" stroke="#1a7f37" stroke-width="2"/>
+  </g>
+  <!-- Bahn 1 (eingefaerbt) -->
+  <path d="M330,250 C360,200 410,180 460,190" stroke="#2563c9" stroke-width="3" fill="none"/>
+  <path d="M460,190 C500,198 520,230 525,262" stroke="#1a8c3c" stroke-width="3" fill="none"/>
+  <path d="M525,262 C528,290 500,312 460,316" stroke="#dcaa14" stroke-width="3" fill="none"/>
+  <path d="M460,316 C420,318 360,300 330,250" stroke="#c8322d" stroke-width="3" fill="none"/>
+  <!-- Bahn 2 -->
+  <path d="M332,256 C362,212 412,190 462,198 C505,205 522,236 520,264 C516,296 494,312 458,312 C420,312 362,300 332,256" stroke="#d97706" stroke-width="1.6" fill="none" stroke-dasharray="0"/>
+  <circle cx="525" cy="262" r="6" fill="#d13438"/>
+  <circle cx="520" cy="266" r="4" fill="#d97706"/>
+
+  <!-- Panel BAHNEN -->
+  <rect x="24" y="82" width="230" height="92" rx="3" class="card"/>
+  <rect x="24" y="82" width="230" height="18" fill="#eaeef3"/><text x="32" y="95" class="h">BAHNEN</text><text x="244" y="95" class="s" text-anchor="end">–</text>
+  <rect x="32" y="108" width="14" height="12" fill="#2563c9"/><rect x="52" y="108" width="10" height="10" rx="2" class="cb"/>
+  <circle cx="74" cy="113" r="5" fill="#ffffff" stroke="#2563c9" stroke-width="1.5"/><circle cx="74" cy="113" r="2.5" fill="#2563c9"/>
+  <text x="84" y="117" style="font-weight:700">plan_pilz_20261005.csv</text><text x="246" y="117" class="s" text-anchor="end">×</text>
+  <text x="84" y="130" class="m" style="font-size:8px;fill:#9aa3ad">412 Pkt  4.08 s  1234.5 mm  vmax 812 mm/s</text>
+  <rect x="32" y="140" width="14" height="12" fill="#d97706"/><rect x="52" y="140" width="10" height="10" rx="2" class="cb"/>
+  <circle cx="74" cy="145" r="5" fill="#ffffff" stroke="#9aa3ad"/>
+  <text x="84" y="149">bahn_20261005_101500.csv</text><text x="246" y="149" class="s" text-anchor="end">×</text>
+  <text x="84" y="162" class="m" style="font-size:8px;fill:#9aa3ad">398 Pkt  4.31 s  1229.8 mm  vmax 790 mm/s</text>
+
+  <!-- Panel DARSTELLUNG -->
+  <rect x="586" y="82" width="210" height="218" rx="3" class="card"/>
+  <rect x="586" y="82" width="210" height="18" fill="#eaeef3"/><text x="594" y="95" class="h">DARSTELLUNG</text><text x="786" y="95" class="s" text-anchor="end">–</text>
+  <g>
+    <rect x="596" y="108" width="10" height="10" rx="2" class="cb"/><text x="612" y="117">Bahnlinie</text>
+    <text x="596" y="135" class="s">Liniendicke</text><rect x="660" y="130" width="120" height="4" rx="2" fill="#dde3ea"/><rect x="690" y="127" width="8" height="10" rx="2" fill="#2563c9"/>
+    <rect x="596" y="146" width="10" height="10" rx="2" class="cbo"/><text x="612" y="155">Punkte</text>
+    <rect x="596" y="164" width="10" height="10" rx="2" class="cbo"/><text x="612" y="173">Dreibein</text>
+    <rect x="596" y="182" width="10" height="10" rx="2" class="cb"/><text x="612" y="191">Modell</text>
+    <rect x="596" y="200" width="10" height="10" rx="2" class="cbo"/><text x="612" y="209">Modell als Schatten</text>
+    <text x="596" y="231" class="s">Einfaerbung</text>
+    <rect x="596" y="237" width="184" height="17" fill="#ffffff" stroke="#c3cad3"/><text x="602" y="249">Geschwindigkeit</text><text x="774" y="249" class="s" text-anchor="end">▾</text>
+    <rect x="596" y="262" width="10" height="10" rx="2" class="cb"/><text x="612" y="271">Bodengitter</text>
+    <rect x="596" y="280" width="10" height="10" rx="2" class="cbo"/><text x="612" y="289">Raeume   …</text>
+  </g>
+
+  <!-- Panel ABLAUF -->
+  <rect x="586" y="314" width="210" height="124" rx="3" class="card"/>
+  <rect x="586" y="314" width="210" height="18" fill="#eaeef3"/><text x="594" y="327" class="h">ABLAUF</text><text x="786" y="327" class="s" text-anchor="end">–</text>
+  <rect x="596" y="340" width="56" height="20" rx="2" fill="#1a7f37"/><text x="624" y="354" text-anchor="middle" style="fill:#fff;font-weight:700">Start</text>
+  <rect x="658" y="340" width="52" height="20" rx="2" class="btn"/><text x="684" y="354" text-anchor="middle">Anfang</text>
+  <text x="720" y="354" class="s">Tempo 1x ▾</text>
+  <rect x="596" y="368" width="10" height="10" rx="2" class="cbo"/><text x="612" y="377">zeitlicher Ablauf</text>
+  <rect x="596" y="384" width="10" height="10" rx="2" class="cbo"/><text x="612" y="393">nur bis Marker zeichnen</text>
+  <rect x="596" y="406" width="184" height="4" rx="2" fill="#dde3ea"/><rect x="700" y="402" width="8" height="12" rx="2" fill="#2563c9"/>
+  <text x="596" y="430" class="s">Punkt 260 / 412</text>
+
+  <!-- Werkzeuge unten links -->
+  <rect x="24" y="414" width="196" height="26" rx="3" class="card"/>
+  <rect x="28" y="418" width="64" height="18" rx="2" class="btn"/><text x="60" y="431" text-anchor="middle" style="font-weight:700;font-size:10px">Schieben</text>
+  <rect x="96" y="418" width="64" height="18" rx="2" fill="#2563c9"/><text x="128" y="431" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:10px">Drehen</text>
+  <rect x="168" y="418" width="22" height="18" rx="2" class="btn"/><text x="179" y="431" text-anchor="middle" style="font-weight:700">−</text>
+  <rect x="194" y="418" width="22" height="18" rx="2" class="btn"/><text x="205" y="431" text-anchor="middle" style="font-weight:700">+</text>
+
+  <!-- Fuss -->
+  <text x="16" y="474" class="m" style="fill:#6b7480">412 Punkte   4.1 s   Weg 1234.5 mm   v 0 .. 812 mm/s   (Farbe bis 790)</text>
+  <text x="804" y="474" class="m" style="fill:#6b7480" text-anchor="end">t    2.60 s   X  0.5000 Y  0.1980 Z  0.6400 m …</text>
+
+  <!-- Nummern -->
+  <circle cx="676" cy="49" r="10" class="num"/><text x="676" y="53" text-anchor="middle" class="nt">1</text>
+  <circle cx="262" cy="90" r="10" class="num"/><text x="262" y="94" text-anchor="middle" class="nt">2</text>
+  <circle cx="576" cy="90" r="10" class="num"/><text x="576" y="94" text-anchor="middle" class="nt">3</text>
+  <circle cx="576" cy="322" r="10" class="num"/><text x="576" y="326" text-anchor="middle" class="nt">4</text>
+  <circle cx="230" cy="427" r="10" class="num"/><text x="230" y="431" text-anchor="middle" class="nt">5</text>
+  <circle cx="440" cy="250" r="10" class="num"/><text x="440" y="254" text-anchor="middle" class="nt">6</text>
+  <circle cx="400" cy="488" r="10" class="num"/><text x="400" y="492" text-anchor="middle" class="nt">7</text>
+</svg>

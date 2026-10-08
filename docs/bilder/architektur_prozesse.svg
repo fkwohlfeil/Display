@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 500" width="820" height="500">
+  <style>
+    text { font-family: 'Segoe UI', Ubuntu, 'DejaVu Sans', Arial, sans-serif; font-size: 12px; fill: #1f2933; }
+    .s { font-size: 10.5px; fill: #4b5563; }
+    .k { font-size: 10px; fill: #6b7480; }
+    .b { font-weight: 700; }
+    .m { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: 10.5px; }
+    .box { fill: #ffffff; stroke: #9aa3ad; stroke-width: 1.2; }
+    .line { stroke: #4b5563; stroke-width: 1.4; fill: none; }
+    text { white-space: pre; }
+    .m text { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: inherit; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <!-- Launch -->
+  <rect x="290" y="8" width="240" height="34" rx="6" fill="#eaeef3" stroke="#9aa3ad"/>
+  <text x="410" y="30" text-anchor="middle" class="m b">ros2 launch display_launch4.py</text>
+  <path class="line" d="M360,42 L300,78" marker-end="url(#a)"/>
+  <path class="line" d="M470,42 L660,78" marker-end="url(#a)"/>
+
+  <!-- GUI-Prozess -->
+  <rect x="12" y="78" width="486" height="258" rx="10" fill="#f4f7fb" stroke="#2563c9" stroke-dasharray="6 4" stroke-width="1.4"/>
+  <text x="24" y="97" class="b" style="fill:#2563c9">Prozess  urdf_gui.py</text>
+
+  <rect x="28" y="108" width="200" height="212" rx="6" class="box"/>
+  <text x="40" y="128" class="b">GUI-Thread (Tk-mainloop)</text>
+  <text x="40" y="152" class="s">UrdfViewer – alle Fenster</text>
+  <text x="40" y="172" class="s">State Machine, Sperren</text>
+  <text x="40" y="192" class="s">_tick</text><text x="216" y="192" text-anchor="end" class="s">50 ms</text>
+  <text x="40" y="212" class="s">_motion_tick</text><text x="216" y="212" text-anchor="end" class="s">20 ms</text>
+  <text x="40" y="232" class="s">_record_tick</text><text x="216" y="232" text-anchor="end" class="s">40 ms</text>
+  <text x="40" y="252" class="s">TrajectoryPlayer, PathRecorder</text>
+  <text x="40" y="272" class="s">TotgProzess (2×) abfragen</text>
+  <text x="40" y="292" class="s">MoveItProcess (move_group)</text>
+
+  <rect x="296" y="108" width="188" height="212" rx="6" class="box"/>
+  <text x="308" y="128" class="b">Executor-Thread (rclpy)</text>
+  <text x="308" y="152" class="s">RosBridge, Node urdf_gui_tf</text>
+  <text x="308" y="172" class="s">TF-Timer</text><text x="472" y="172" text-anchor="end" class="s">30 Hz</text>
+  <text x="308" y="192" class="s">Auftrags-Timer</text><text x="472" y="192" text-anchor="end" class="s">20 Hz</text>
+  <text x="308" y="212" class="s">Probe move_group</text><text x="472" y="212" text-anchor="end" class="s">1 Hz</text>
+  <text x="308" y="232" class="s">Service-Clients (async)</text>
+  <text x="308" y="252" class="s">TransformBroadcaster</text>
+  <text x="308" y="272" class="s">Publisher robot_description,</text>
+  <text x="308" y="288" class="s">/joint_states</text>
+
+  <path class="line" d="M228,170 L296,170" marker-end="url(#a)"/>
+  <text x="262" y="164" text-anchor="middle" class="k">Aufträge</text>
+  <path class="line" d="M296,218 L228,218" marker-end="url(#a)"/>
+  <text x="262" y="212" text-anchor="middle" class="k">Antworten</text>
+  <path class="line" d="M228,266 L296,266" marker-end="url(#a)"/>
+  <text x="262" y="260" text-anchor="middle" class="k">Sollwerte</text>
+
+  <!-- RViz -->
+  <rect x="600" y="78" width="204" height="44" rx="6" class="box"/>
+  <text x="702" y="97" text-anchor="middle" class="b">RViz2</text>
+  <text x="702" y="113" text-anchor="middle" class="k">display2.rviz</text>
+  <path class="line" d="M484,150 L600,112" marker-end="url(#a)"/>
+  <text x="548" y="160" text-anchor="middle" class="k">/tf, /joint_states,</text>
+  <text x="548" y="173" text-anchor="middle" class="k">robot_description</text>
+
+  <!-- move_group -->
+  <rect x="560" y="176" width="244" height="108" rx="6" fill="#ffffff" stroke="#1a7f37" stroke-width="1.4"/>
+  <text x="572" y="195" class="b">move_group</text>
+  <text x="572" y="210" class="k">Kindprozess, eigene Prozessgruppe</text>
+  <text x="572" y="228" class="s">Pilz-Pipeline, IK-Solver (KDL …)</text>
+  <text x="572" y="246" class="m">/compute_ik</text>
+  <text x="572" y="261" class="m">/plan_kinematic_path</text>
+  <text x="572" y="276" class="m">/plan_sequence_path</text>
+  <path class="line" d="M484,222 L560,222" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text x="522" y="216" text-anchor="middle" class="k">Services</text>
+
+  <!-- Parameterdatei -->
+  <rect x="560" y="300" width="244" height="44" rx="4" fill="#fdf3e2" stroke="#9a6700" stroke-dasharray="5 3"/>
+  <text x="572" y="317" class="m">/tmp/urdf_gui_moveit_*/</text>
+  <text x="572" y="334" class="s">move_group.yaml (URDF, SRDF, Grenzen)</text>
+  <path class="line" d="M682,300 L682,284" stroke-dasharray="4 3" marker-end="url(#a)"/>
+
+  <!-- Kindprozesse -->
+  <rect x="28" y="388" width="200" height="62" rx="6" class="box"/>
+  <text x="40" y="407" class="b">totg_rechner.py</text>
+  <text x="40" y="424" class="s">MoveItPy, TOTG</text>
+  <text x="40" y="440" class="s">liest move_group.yaml</text>
+
+  <rect x="262" y="388" width="226" height="62" rx="6" class="box"/>
+  <text x="274" y="407" class="b">intrinsic_lin_rechner.py</text>
+  <text x="274" y="424" class="s">MoveItPy, IK/FK</text>
+  <text x="274" y="440" class="s">liest move_group.yaml</text>
+
+  <rect x="560" y="388" width="244" height="62" rx="6" class="box"/>
+  <text x="572" y="407" class="b">intrinsic_toppra_wrapper</text>
+  <text x="572" y="424" class="s">C++, Intrinsic Core (Bazel)</text>
+  <text x="572" y="440" class="s">Modi lin_kurve … toppra</text>
+
+  <path class="line" d="M110,320 L110,388" marker-end="url(#a)"/>
+  <path class="line" d="M190,320 L330,388" marker-end="url(#a)"/>
+  <text x="118" y="352" class="k">auftrag.json →</text>
+  <text x="118" y="366" class="k">← antwort.json</text>
+  <text x="342" y="376" class="k">je Auftrag ein Prozess</text>
+  <path class="line" d="M488,419 L560,419" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text x="524" y="412" text-anchor="middle" class="k">JSON</text>
+
+  <text x="12" y="480" class="k">Der GUI-Thread fasst ROS nie an: Aufträge und Antworten laufen über zwei Warteschlangen der RosBridge.</text>
+  <text x="12" y="494" class="k">MoveIt-Rechnungen mit eigenem rclcpp-Node laufen nur in Kindprozessen, nie im Prozess der Oberfläche.</text>
+</svg>

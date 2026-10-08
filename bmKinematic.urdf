@@ -267,16 +267,16 @@
     <child link="link10" />
     <origin xyz="0 0 0.2" rpy="0 1.570796327 0" />
   </joint>
-  <link name="tcp11" />
-  <joint name="frame10" type="fixed">
-    <parent link="link_11" />
-    <child link="tcp11" />
-    <origin xyz="0 0.1 0.1" rpy="0 0 0" />
-  </joint>
   <link name="Frame_Teil1" />
   <joint name="frame11" type="fixed">
     <parent link="Frame_Teil1" />
     <child link="base_link" />
     <origin xyz="0 0 0" rpy="0 0 1.570796327" />
+  </joint>
+  <link name="link12" />
+  <joint name="TCP_link" type="fixed">
+    <parent link="link_11" />
+    <child link="link12" />
+    <origin xyz="0 0.1 0.1" rpy="0 0 0" />
   </joint>
 </robot>

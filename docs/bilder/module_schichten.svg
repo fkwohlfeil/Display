@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 420" width="820" height="420">
+  <style>
+    text { font-family: 'Segoe UI', Ubuntu, 'DejaVu Sans', Arial, sans-serif; font-size: 12px; fill: #1f2933; }
+    .s { font-size: 10px; fill: #6b7480; }
+    .h { font-size: 10.5px; font-weight: 700; fill: #6b7480; letter-spacing: .4px; }
+    .b { font-weight: 700; }
+    .gui { fill: #e8f0fc; stroke: #2563c9; stroke-width: 1.4; }
+    .basis { fill: #ffffff; stroke: #9aa3ad; stroke-width: 1.1; }
+    .rein { fill: #eef8f1; stroke: #1a7f37; stroke-width: 1.1; }
+    .kind { fill: #fdf6ea; stroke: #9a6700; stroke-width: 1.1; }
+    .line { stroke: #4b5563; stroke-width: 1.4; fill: none; }
+    text { white-space: pre; }
+    .m text { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-size: inherit; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/>
+    </marker>
+  </defs>
+
+  <rect x="200" y="8" width="380" height="44" rx="6" class="gui"/>
+  <text x="390" y="27" text-anchor="middle" class="b">urdf_gui.py</text>
+  <text x="390" y="43" text-anchor="middle" class="s">UrdfViewer: Fenster, State Machine, Abläufe (≈ 11 000 Zeilen)</text>
+
+  <rect x="620" y="8" width="188" height="44" rx="6" fill="#f3f4f6" stroke="#9aa3ad" stroke-dasharray="5 3"/>
+  <text x="714" y="27" text-anchor="middle" class="b">bahn_viewer3.py</text>
+  <text x="714" y="43" text-anchor="middle" class="s">eigenständig, liest nur CSV</text>
+
+  <path class="line" d="M390,52 L390,74" marker-end="url(#a)"/>
+  <text x="398" y="68" class="s">importiert</text>
+
+  <text x="12" y="88" class="h">BASISMODULE  · tragen STAND, geprüft gegen MODUL_STAENDE</text>
+  <!-- Reihe 1 -->
+  <rect x="12"  y="96" width="150" height="46" rx="5" class="basis"/>
+  <text x="87"  y="115" text-anchor="middle" class="b">einstellungen</text>
+  <text x="87"  y="132" text-anchor="middle" class="s">Pfade, Takte, Recorder</text>
+  <rect x="174" y="96" width="150" height="46" rx="5" class="basis"/>
+  <text x="249" y="115" text-anchor="middle" class="b">stil</text>
+  <text x="249" y="132" text-anchor="middle" class="s">Farben, Maße der Baumansicht</text>
+  <rect x="336" y="96" width="150" height="46" rx="5" class="basis"/>
+  <text x="411" y="115" text-anchor="middle" class="b">matrix</text>
+  <text x="411" y="132" text-anchor="middle" class="s">4×4-Matrizen als Listen</text>
+  <rect x="498" y="96" width="150" height="46" rx="5" class="basis"/>
+  <text x="573" y="115" text-anchor="middle" class="b">anzeige</text>
+  <text x="573" y="132" text-anchor="middle" class="s">Singleton ANZEIGE</text>
+  <rect x="660" y="96" width="148" height="46" rx="5" class="basis"/>
+  <text x="734" y="115" text-anchor="middle" class="b">urdf_modell</text>
+  <text x="734" y="132" text-anchor="middle" class="s">URDF lesen/ändern/prüfen</text>
+  <!-- Reihe 2 -->
+  <rect x="12"  y="152" width="150" height="46" rx="5" class="basis"/>
+  <text x="87"  y="171" text-anchor="middle" class="b">kinematik</text>
+  <text x="87"  y="188" text-anchor="middle" class="s">Forward Kinematics, Layout</text>
+  <rect x="174" y="152" width="150" height="46" rx="5" class="basis"/>
+  <text x="249" y="171" text-anchor="middle" class="b">moveit_konfig</text>
+  <text x="249" y="188" text-anchor="middle" class="s">Parameter, SRDF, move_group</text>
+  <rect x="336" y="152" width="150" height="46" rx="5" class="basis"/>
+  <text x="411" y="171" text-anchor="middle" class="b">bahn</text>
+  <text x="411" y="188" text-anchor="middle" class="s">Zustände, Player, Recorder</text>
+  <rect x="498" y="152" width="150" height="46" rx="5" class="basis"/>
+  <text x="573" y="171" text-anchor="middle" class="b">totg_prozess</text>
+  <text x="573" y="188" text-anchor="middle" class="s">Kindprozess je Auftrag</text>
+  <rect x="660" y="152" width="148" height="46" rx="5" class="basis"/>
+  <text x="734" y="171" text-anchor="middle" class="b">ros_bruecke</text>
+  <text x="734" y="188" text-anchor="middle" class="s">rclpy, TF, Services</text>
+
+  <text x="12" y="218" class="s">Reihenfolge = Importrichtung: ein Modul importiert nur Module links bzw. oberhalb von sich (und die reinen Rechenmodule). Kein Zyklus.</text>
+
+  <text x="12" y="246" class="h">REINE RECHNUNG  · kein Tk, kein ROS, kein NumPy – ohne Bildschirm testbar</text>
+  <rect x="12"  y="254" width="190" height="46" rx="5" class="rein"/>
+  <text x="107" y="273" text-anchor="middle" class="b">konvention</text>
+  <text x="107" y="290" text-anchor="middle" class="s">Drehkonventionen ZYX, ZYZ, ZXZ</text>
+  <rect x="214" y="254" width="190" height="46" rx="5" class="rein"/>
+  <text x="309" y="273" text-anchor="middle" class="b">sequenz</text>
+  <text x="309" y="290" text-anchor="middle" class="s">Punktliste, Modalzustand, Prüfung</text>
+  <rect x="416" y="254" width="190" height="46" rx="5" class="rein"/>
+  <text x="511" y="273" text-anchor="middle" class="b">totg_folge</text>
+  <text x="511" y="290" text-anchor="middle" class="s">TOTG: Auftrag, Antwort, Eckwerte</text>
+  <rect x="618" y="254" width="190" height="46" rx="5" class="rein"/>
+  <text x="713" y="273" text-anchor="middle" class="b">intrinsic_folge</text>
+  <text x="713" y="290" text-anchor="middle" class="s">Intrinsic: Auftrag, Antwort, CSV</text>
+
+  <text x="12" y="330" class="h">KINDPROZESSE UND HILFSSKRIPTE  · Rechner: AUFTRAG.json ANTWORT.json  |  --pruefen</text>
+  <rect x="12"  y="338" width="190" height="46" rx="5" class="kind"/>
+  <text x="107" y="357" text-anchor="middle" class="b">totg_rechner.py</text>
+  <text x="107" y="374" text-anchor="middle" class="s">MoveItPy, TOTG</text>
+  <rect x="214" y="338" width="190" height="46" rx="5" class="kind"/>
+  <text x="309" y="357" text-anchor="middle" class="b">intrinsic_lin_rechner.py</text>
+  <text x="309" y="374" text-anchor="middle" class="s">MoveItPy-IK/FK + Wrapper</text>
+  <rect x="416" y="338" width="190" height="46" rx="5" class="kind"/>
+  <text x="511" y="357" text-anchor="middle" class="b">intrinsic_lin_auftrag.py</text>
+  <text x="511" y="374" text-anchor="middle" class="s">Achsgrenzen lesen, Hilfsskript</text>
+  <rect x="618" y="338" width="190" height="46" rx="5" fill="#f3f4f6" stroke="#9aa3ad" stroke-dasharray="5 3"/>
+  <text x="713" y="357" text-anchor="middle" class="b">intrinsic_toppra_wrapper</text>
+  <text x="713" y="374" text-anchor="middle" class="s">extern, C++ (Intrinsic Core)</text>
+
+  <text x="12" y="408" class="s">Gestrichelt: nicht in diesem Repository.</text>
+</svg>

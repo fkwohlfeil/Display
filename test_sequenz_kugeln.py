@@ -51,6 +51,10 @@ class Kugeln(unittest.TestCase):
         # Der Fehler von damals: pruefe(kugeln_pruefen=False) liess die
         # Folge durch, nutzlast() pruefte mit Kugeln und warf nach der IK.
         punkte, _ = sequenz.lies_liste(LISTE)
+        # Seit 2.3 geht nur hinaus, was Achswerte traegt -- wie nach der
+        # IK-Kette der Oberflaeche.
+        for punkt in punkte:
+            punkt.achsen = {"j1": 0.0}
         folge = sequenz.Folge(punkte)
         with self.assertRaisesRegex(ValueError, "ueberlappen"):
             folge.nutzlast(gruppe="arm", start={}, toleranz=0.01)

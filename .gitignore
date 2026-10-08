@@ -12,3 +12,6 @@ __pycache__/
 /lin_antwort.json
 /lin_params.yaml
 /totg_params.yaml
+
+# Videos nicht ins Repository (zu gross; GitHub nimmt Dateien ueber 100 MB nicht an)
+*.mp4

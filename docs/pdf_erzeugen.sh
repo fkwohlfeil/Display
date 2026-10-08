@@ -31,6 +31,13 @@ PDF="$ARBEIT/Dokumentation.pdf"
 rm -f "$PDF"
 
 cd "$HIER"
+
+# Codezeilen ueber ~95 Zeichen bricht der Browser in der PDF um. Wer sie von
+# dort kopiert, bekommt Zeilenumbrueche mitten im Befehl. Mit `\` kuerzen.
+awk 'FNR==1{im_code=0} /^ *```/{im_code=!im_code; next}
+     im_code && length($0)>95 {printf "WARNUNG %s:%d: Codezeile mit %d Zeichen wird umbrochen\n", FILENAME, FNR, length($0)}' \
+  Begriffe.md Entwicklerdokumentation.md Bedienerdokumentation.md >&2
+
 pandoc Begriffe.md Entwicklerdokumentation.md Bedienerdokumentation.md \
   --from markdown --to html5 --standalone --embed-resources \
   --toc --toc-depth=2 --css pdf_stil.css --columns=10000 \

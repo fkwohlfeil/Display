@@ -16,6 +16,7 @@ in der Anleitung werden Beschriftungen der Oberfläche immer wörtlich zitiert.
 | ACM | Allowed Collision Matrix | Linkpaare, die nicht auf Kollision geprüft werden (`disable_collisions` in der SRDF) |
 | CIRC | Circular Motion | Kreisbewegung des Pilz-Planners; braucht einen Hilfspunkt |
 | CSV | Comma-Separated Values | Textformat der Bahnen (`TCP_Fahrten/`), hier mit `;` getrennt |
+| ESU | Extended Security Updates | verlängerte Sicherheitsupdates für Windows 10 nach Ende des regulären Supports |
 | FK | Forward Kinematics | Lage aller Links aus den Achswerten |
 | GUI | Graphical User Interface | die Oberfläche `urdf_gui.py` |
 | IK | Inverse Kinematics | Achswerte zu einer vorgegebenen TCP-Lage; kommt immer aus MoveIt |

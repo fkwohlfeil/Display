@@ -41,6 +41,7 @@ einem fertig eingerichteten Rechner geht es direkt mit Abschnitt 3 weiter.
 | Baustein | getesteter Stand | gebraucht für |
 |---|---|---|
 | Windows 11 mit WSL2 | Windows 11 Pro 23H2 | nur unter Windows; ein nativ installiertes Ubuntu geht ebenso |
+| Windows 10 mit WSL2 | nicht getestet; mindestens 22H2, Build 19045.2311 | statt Windows 11 (Abschnitt 2.2) |
 | Ubuntu | 24.04 LTS „Noble“ | alles |
 | ROS 2 | Jazzy (`ros-jazzy-desktop`) | Oberfläche mit ROS, RViz2 |
 | MoveIt 2 mit Pilz | 2.12.4 | Planen, IK, Punktfolgen |
@@ -52,10 +53,10 @@ einem fertig eingerichteten Rechner geht es direkt mit Abschnitt 3 weiter.
 Rechner: x86-64 mit 16 GB Arbeitsspeicher und rund 30 GB freiem Platz, davon
 etwa 19 GB allein für den Bazel-Cache von Intrinsic Core.
 
-### 2.1 Ubuntu 24.04 unter Windows (WSL2)
+### 2.1 Ubuntu 24.04 unter Windows 11 (WSL2)
 
-Entfällt bei einem nativ installierten Ubuntu 24.04. In einer PowerShell mit
-Administratorrechten:
+Entfällt bei einem nativ installierten Ubuntu 24.04; unter Windows 10 gilt
+stattdessen Abschnitt 2.2. In einer PowerShell mit Administratorrechten:
 
 ```powershell
 wsl --install -d Ubuntu-24.04
@@ -69,6 +70,9 @@ aktualisieren:
 sudo apt update && sudo apt upgrade -y
 ```
 
+- Meldet `wsl` „Ungültiger Verteilungsname“, ist die WSL-Version älter als
+  2.4.4: zuerst `wsl --update`, dann erneut installieren (Abschnitt 2.2,
+  Schritt 3).
 - Die Fenster der Linux-Programme (Oberfläche, RViz2) zeigt Windows 11 über
   WSLg ohne weitere Einrichtung an.
 - RViz2 braucht unter WSL Software-Rendering. Das Launch-Skript setzt es selbst
@@ -77,23 +81,176 @@ sudo apt update && sudo apt upgrade -y
   `\\wsl.localhost\<Distribution>\home\<benutzer>\` erreichbar, z. B.
   `\\wsl.localhost\Ubuntu-24.04\home\<benutzer>\Display`.
 
-### 2.2 ROS 2 Jazzy und MoveIt 2
+### 2.2 Ubuntu 24.04 unter Windows 10 (WSL2)
 
-Gekürzt nach der offiziellen Anleitung „Ubuntu (deb packages)“ für Jazzy auf
-docs.ros.org; bei Abweichungen gilt die offizielle Anleitung.
+Gilt statt Abschnitt 2.1, wenn der Rechner unter Windows 10 läuft. Ab
+Abschnitt 2.3 ist alles gleich, denn dann wird nur noch in Ubuntu gearbeitet.
+
+::: hinweis
+**Unter Windows 10 nicht getestet.** Die Schritte folgen den Vorgaben von
+Microsoft für WSL2 und WSLg. Windows 10 bekommt seit dem 14. Oktober 2025
+Sicherheitsupdates nur noch über das ESU-Programm; für einen neu eingerichteten
+Rechner ist Windows 11 die bessere Wahl.
+:::
+
+**Schritt 1: Voraussetzungen prüfen.** Ohne WSLg zeigt Windows die Fenster der
+Oberfläche und von RViz2 nicht an. WSLg gibt es unter Windows 10 nur mit der
+WSL-Version aus dem Microsoft Store. Microsoft verlangt dafür mindestens
+Build 19044 mit dem Update KB5020030 (November 2022). 22H2 ist die letzte
+Version von Windows 10 und erfüllt das mit allen Updates sicher.
+
+| Prüfung | wo | Soll |
+|---|---|---|
+| Version und Build | Windows-Taste + R, `winver` | Version 22H2, Build 19045.2311 oder höher |
+| Updates | Einstellungen → Update und Sicherheit → Windows Update | alle installiert |
+| Systemtyp | Einstellungen → System → Info | 64-Bit-Betriebssystem, x64-basierter Prozessor |
+| Virtualisierung | Task-Manager → Leistung → CPU | „Virtualisierung: Aktiviert“ |
+
+- Ist der Build älter, zuerst über Windows Update auf 22H2 aktualisieren.
+- Ist die Virtualisierung deaktiviert, sie im BIOS/UEFI einschalten (Intel VT-x
+  bzw. AMD-V/SVM, je nach Hersteller unter „CPU“ oder „Advanced“).
+
+**Schritt 2: Windows-Features einschalten.** WSL 2 braucht zwei optionale
+Features von Windows. `wsl --install` schaltet sie normalerweise selbst ein,
+bricht unter Windows 10 aber womöglich schon vorher ab (Schritt 3). Darum hier
+von Hand: Windows-Taste + R, `optionalfeatures` eingeben. Im Fenster
+„Windows-Features aktivieren oder deaktivieren“ diese beiden Einträge
+anhaken:
+
+- „Windows-Subsystem für Linux“
+- „VM-Plattform“ (englisch „Virtual Machine Platform“)
+
+Mit OK bestätigen und Windows neu starten. Dasselbe geht in einer PowerShell
+mit Administratorrechten, danach ebenfalls neu starten:
+
+```powershell
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+```
+
+**Schritt 3: WSL aktualisieren.** Ubuntu 24.04 bietet WSL nur noch in seinem
+neuen Paketformat an, und das liest WSL erst ab Version 2.4.4. Die in
+Windows 10 eingebaute WSL-Version kennt den Namen `Ubuntu-24.04` deshalb nicht
+und meldet `Ungültiger Verteilungsname: 'Ubuntu-24.04'`. Darum zuerst WSL
+aktualisieren, in einer PowerShell mit Administratorrechten:
+
+```powershell
+wsl --update                       # aktuelle WSL-Version aus dem Microsoft Store, mit WSLg
+wsl --version                      # "WSL-Version: 2.4.4.0" oder höher
+```
+
+- Ist der Microsoft Store gesperrt (z. B. auf Firmenrechnern):
+  `wsl --update --web-download`.
+- Kennt `wsl` die Optionen `--update` oder `--version` nicht, oder bleibt die
+  Version unter 2.4.4: das Installationspaket `wsl.<version>.x64.msi` unter
+  „Assets“ der neuesten Version auf
+  [github.com/microsoft/WSL/releases](https://github.com/microsoft/WSL/releases)
+  laden und mit Doppelklick installieren. Danach erneut `wsl --version`.
+
+**Schritt 4: Ubuntu installieren.** In derselben PowerShell:
+
+```powershell
+wsl --list --online                # Ubuntu-24.04 muss in der Liste stehen
+wsl --install -d Ubuntu-24.04
+```
+
+Fordert `wsl` dazu auf, Windows neu starten und `wsl --install -d Ubuntu-24.04`
+wiederholen.
+
+- Nicht auf `wsl --install -d Ubuntu` ausweichen: Dieser Name liefert die
+  jeweils aktuelle Ubuntu-LTS, nicht unbedingt 24.04. ROS 2 Jazzy braucht
+  genau Ubuntu 24.04.
+- Meldet `wsl` den Fehler `0x80370102` (virtuelle Maschine startet nicht),
+  fehlt die Virtualisierung im BIOS/UEFI (Schritt 1) oder die „VM-Plattform“
+  (Schritt 2).
+- Bleibt die Installation bei 0,0 % stehen:
+  `wsl --install --web-download -d Ubuntu-24.04`.
+
+**Schritt 5: WSL prüfen.** In PowerShell (ohne Administratorrechte):
+
+```powershell
+wsl -l -v            # Ubuntu-24.04 mit VERSION 2
+```
+
+Steht bei Ubuntu-24.04 `VERSION 1`, mit `wsl --set-version Ubuntu-24.04 2`
+umstellen; Linux-Fenster gibt es nur mit WSL 2.
+
+**Schritt 6: Ubuntu einrichten und Anzeige prüfen.** „Ubuntu 24.04“ aus dem
+Startmenü öffnen; beim ersten Start fragt Ubuntu nach Benutzername und
+Passwort. Dann das System aktualisieren und testen, ob Linux-Fenster
+erscheinen:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+echo $DISPLAY $WAYLAND_DISPLAY     # erwartet: ":0 wayland-0"
+sudo apt install -y python3-tk
+python3 -m tkinter                 # ein kleines Testfenster erscheint unter Windows
+```
+
+- Bleiben `DISPLAY` und `WAYLAND_DISPLAY` leer oder erscheint kein Fenster, in
+  PowerShell `wsl --update` und `wsl --shutdown` ausführen und Ubuntu neu
+  öffnen. Ein eigener X-Server unter Windows (z. B. VcXsrv) wäre ein Ausweg,
+  ist aber nicht getestet und hier nicht beschrieben.
+- RViz2 läuft wie unter Windows 11 mit Software-Rendering
+  (`software_gl:=true`, Standard). Ein eigener Grafiktreiber für WSL ist dafür
+  nicht nötig.
+- Im Windows-Explorer sind die Linux-Dateien unter
+  `\\wsl$\Ubuntu-24.04\home\<benutzer>\Display` erreichbar; dieser Pfad gilt
+  unter Windows 10 und 11.
+
+### 2.3 ROS 2 Jazzy und MoveIt 2
+
+Nach der offiziellen Anleitung „Ubuntu (deb packages)“ für Jazzy auf
+docs.ros.org, ergänzt um MoveIt und die Python-Pakete der Oberfläche; bei
+Abweichungen gilt die offizielle Anleitung. Lange Befehle sind mit `\` am
+Zeilenende umbrochen, damit sie sich unverändert aus der PDF kopieren lassen.
 
 ```bash
 # UTF-8-Locale und Paketquelle "universe"
 sudo apt update && sudo apt install -y locales software-properties-common curl
 sudo locale-gen en_US en_US.UTF-8
 sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+export LANG=en_US.UTF-8
+locale                                  # LANG=en_US.UTF-8
 sudo add-apt-repository -y universe
 
 # Paketquelle von ROS 2 eintragen
-export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}')
-curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb"
+API=https://api.github.com/repos/ros-infrastructure/ros-apt-source
+QUELLE=https://github.com/ros-infrastructure/ros-apt-source
+V=$(curl -s $API/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}')
+U=$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})
+echo "$V $U"                            # Versionsnummer und "noble"; nie leer
+curl -L -o /tmp/ros2-apt-source.deb \
+    "$QUELLE/releases/download/$V/ros2-apt-source_$V.${U}_all.deb"
 sudo dpkg -i /tmp/ros2-apt-source.deb
 ```
+
+- Zeigt `echo "$V $U"` keine Versionsnummer, ist die Abfrage bei GitHub
+  gescheitert; dann nicht weitermachen, sondern `curl -s $API/releases/latest`
+  allein aufrufen und die Meldung lesen. Steht dort „SSL certificate problem:
+  self-signed certificate in certificate chain“, bricht ein Proxy im
+  Firmennetz die Verschlüsselung auf. Dann dessen Stammzertifikat (von der
+  IT) in Ubuntu eintragen und den Block wiederholen:
+
+  ```bash
+  sudo cp <zertifikat>.crt /usr/local/share/ca-certificates/
+  sudo update-ca-certificates
+  ```
+- Unter Ubuntu 24.04 müssen die Paketquellen `noble-updates` und
+  `noble-backports` eingetragen sein, sonst scheitert die Installation an
+  Abhängigkeiten. Prüfen:
+
+  ```bash
+  grep Suites /etc/apt/sources.list.d/ubuntu.sources
+  # erste Zeile muss lauten:  Suites: noble noble-updates noble-backports
+  ```
+
+  Fehlt etwas, die Zeile in der Datei so ergänzen und danach aktualisieren:
+
+  ```bash
+  sudo nano /etc/apt/sources.list.d/ubuntu.sources
+  sudo apt clean && sudo apt update && sudo apt full-upgrade -y
+  ```
 
 ```bash
 # ROS 2, MoveIt 2 (mit Pilz und KDL) und moveit_py
@@ -111,6 +268,14 @@ echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
+Kurztest von ROS 2 wie in der offiziellen Anleitung, in zwei Terminals; im
+zweiten erscheinen die Nachrichten des ersten („I heard: …“), Ende mit Strg+C:
+
+```bash
+ros2 run demo_nodes_cpp talker          # Terminal 1
+ros2 run demo_nodes_py listener         # Terminal 2
+```
+
 Auf dem Entwicklungsrechner liegt über den apt-Paketen zusätzlich ein
 Quellcode-Build von MoveIt 2.12.4 in `~/ws_moveit` (Overlay); `moveit_py` und
 der gepatchte Pilz-Planner kommen von dort. Die apt-Pakete haben dieselbe
@@ -119,16 +284,20 @@ Version.
 **Optional: Pilz mit einstellbarer Abtastzeit.** Das Feld „Abtastzeit“
 (Abschnitt 5.3) wirkt nur mit einem gepatchten Pilz-Planner; sonst rechnet Pilz
 fest mit 0,1 s. Dafür wird nur das Pilz-Paket aus dem Quellcode gebaut, in
-einem eigenen Workspace über den apt-Paketen:
+einem eigenen Workspace über den apt-Paketen. Das Skript
+`patch_pilz_sampling_time_1.py` liegt im Projektordner; diesen vorher nach
+`~/Display` kopieren (Abschnitt 2.5).
 
 ```bash
 mkdir -p ~/ws_moveit/src && cd ~/ws_moveit/src
-git clone -b jazzy --filter=blob:none --sparse https://github.com/moveit/moveit2.git moveit2_src
+git clone -b jazzy --filter=blob:none --sparse \
+    https://github.com/moveit/moveit2.git moveit2_src
 cd moveit2_src && git sparse-checkout set moveit_planners/pilz_industrial_motion_planner
-python3 <pfad>/patch_pilz_sampling_time_1.py \
+python3 ~/Display/patch_pilz_sampling_time_1.py \
     ~/ws_moveit/src/moveit2_src/moveit_planners/pilz_industrial_motion_planner
 cd ~/ws_moveit
-colcon build --packages-select pilz_industrial_motion_planner --cmake-args -DCMAKE_BUILD_TYPE=Release
+colcon build --packages-select pilz_industrial_motion_planner \
+    --cmake-args -DCMAKE_BUILD_TYPE=Release
 echo "source ~/ws_moveit/install/setup.bash" >> ~/.bashrc
 ```
 
@@ -137,12 +306,14 @@ Ob der Patch geladen ist, zeigt das Log von `move_group`
 Das Skript ist gegen Pilz 2.12.4 geprüft; mit `--pruefen` stellt es fest, ob
 der Patch angewendet ist, mit `--zurueck` entfernt es ihn.
 
-### 2.3 Intrinsic Core und Wrapper
+### 2.4 Intrinsic Core und Wrapper
 
 Nur für das Verfahren Intrinsic. Gebraucht wird nicht die Laufzeitumgebung von
 Intrinsic Core (k3s, `inctl`, OMTS aus deren Getting-Started-Anleitung), sondern
 nur ein Teil der Bibliotheken für Bahnkurven und TOPP-RA. Daraus baut Bazel ein
-einzelnes Programm, den `intrinsic_toppra_wrapper`.
+einzelnes Programm, den `intrinsic_toppra_wrapper`. Seine Quellen liegen im
+Projektordner unter `intrinsic_toppra_wrapper/`; den Projektordner vorher nach
+`~/Display` kopieren (Abschnitt 2.5).
 
 ```bash
 # Intrinsic Core in genau diesem Release
@@ -151,11 +322,13 @@ cd ~
 git clone --branch 20260922.0 https://github.com/intrinsic-ai/intrinsic-core.git
 
 # Bazelisk als "bazel"; holt die Bazel-Version aus .bazelversion (8.8.0)
-curl -L https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 -o /tmp/bazelisk
+curl -L -o /tmp/bazelisk \
+    https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
 sudo install -m 755 /tmp/bazelisk /usr/local/bin/bazel
 
-# Quellen des Wrappers in den Baum von Intrinsic Core legen
+# Quellen des Wrappers aus dem Projekt in den Baum von Intrinsic Core legen
 mkdir -p ~/intrinsic-core/intrinsic_toppra_wrapper
+cd ~/Display/intrinsic_toppra_wrapper
 cp BUILD intrinsic_toppra_wrapper.cc json_klein.h ~/intrinsic-core/intrinsic_toppra_wrapper/
 
 # bauen; --jobs=4 begrenzt den Speicherbedarf
@@ -185,18 +358,21 @@ ok
   `~/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper`,
   den Pfad mit `export INTRINSIC_WRAPPER=…` in `~/.bashrc` oder beim Start mit
   `intrinsic_wrapper:=…` angeben.
-- Nach einer Änderung an `intrinsic_toppra_wrapper.cc` denselben
-  `bazel build` wiederholen. Die Oberfläche verlangt mindestens Wrapper-Stand 3.
+- Den Wrapper nur im Projekt ändern (`~/Display/intrinsic_toppra_wrapper/`),
+  dann die Quellen wie oben nach `~/intrinsic-core/` kopieren und denselben
+  `bazel build` wiederholen. Die Kopie in Intrinsic Core ist nur die
+  Bauvorlage. Die Oberfläche verlangt mindestens Wrapper-Stand 3.
+- `beispiel_auftrag_wrapper.json` im selben Ordner ist ein kleiner Auftrag für
+  den Modus `toppra`; damit lässt sich der Wrapper ohne Oberfläche aufrufen
+  (die Antwort muss `"ok": true` enthalten):
 
-::: hinweis
-**Noch nicht im Repository:** Die drei Quelldateien des Wrappers (`BUILD`,
-`intrinsic_toppra_wrapper.cc`, `json_klein.h`) und das Skript
-`patch_pilz_sampling_time_1.py` liegen bisher nur auf dem Entwicklungsrechner
-(`~/intrinsic-core/intrinsic_toppra_wrapper/` bzw. außerhalb des
-Projektordners). Für eine neue Installation müssen sie von dort kopiert werden.
-:::
+  ```bash
+  cd ~/Display/intrinsic_toppra_wrapper
+  ~/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper \
+      beispiel_auftrag_wrapper.json /tmp/antwort.json
+  ```
 
-### 2.4 Projekt einrichten
+### 2.5 Projekt einrichten
 
 Den Projektordner, ein Git-Repository ohne eingerichtetes Remote, nach
 `~/Display` kopieren. Der Ort ist frei wählbar: Modell, Sicherungen und Bahnen
@@ -208,7 +384,7 @@ cd ~/Display
 git status        # vollständig und ohne fremde Änderungen?
 ```
 
-### 2.5 Installation prüfen
+### 2.6 Installation prüfen
 
 ```bash
 cd ~/Display
@@ -226,7 +402,7 @@ ros2 launch display_launch4.py               # Oberfläche und RViz2
   steht in der Fußzeile `move_group  bereit`. Dann im Fenster „Punktfolge“ das
   Beispiel nacheinander mit Pilz, TOTG und Intrinsic planen.
 
-### 2.6 Ordnerstruktur
+### 2.7 Ordnerstruktur
 
 Auf dem Rechner:
 
@@ -234,7 +410,7 @@ Auf dem Rechner:
 ~/                                       Home-Verzeichnis in Ubuntu
 ├── Display/                             dieses Projekt (Ort frei wählbar)
 ├── intrinsic-core/                      Intrinsic Core 20260922.0
-│   ├── intrinsic_toppra_wrapper/        Quellen des Wrappers (eigener Code)
+│   ├── intrinsic_toppra_wrapper/        Kopie der Wrapper-Quellen aus Display/
 │   └── bazel-bin/intrinsic_toppra_wrapper/
 │       └── intrinsic_toppra_wrapper     gebautes Programm (Standardpfad)
 ├── ws_moveit/                           optional: Overlay mit gepatchtem Pilz
@@ -265,6 +441,8 @@ Display/
 ├── intrinsic_lin_auftrag.py         Joint Limits lesen; Hilfsskript
 ├── test_*.py  mutation_intrinsic_folge.py
 │                                    Tests
+├── intrinsic_toppra_wrapper/        Quellen des Intrinsic-Wrappers (Abschnitt 2.4)
+├── patch_pilz_sampling_time_1.py    Patch für Pilz: einstellbare Abtastzeit
 ├── patch_lin_rechner_mimic_3.py     früherer Patch des LIN-Rechners
 ├── README.md  .gitignore
 ├── docs/                            diese Dokumentation (Markdown, Bilder, PDF)
@@ -487,7 +665,7 @@ TOTG und Intrinsic brauchen eine Beschleunigungsgrenze je Achse.
 | Abtastzeit | s | 0.100 |
 
 Diese Cartesian Limits gelten für LIN und CIRC mit Pilz. Die Abtastzeit wirkt nur mit
-einem gepatchten Pilz-Planner (Abschnitt 2.2, sonst fest 0,1 s); halbieren verdoppelt etwa die
+einem gepatchten Pilz-Planner (Abschnitt 2.3, sonst fest 0,1 s); halbieren verdoppelt etwa die
 Planungszeit einer LIN-Bahn.
 
 ### 5.4 Reiter „Kinematik“ (Neustart nötig)
@@ -887,7 +1065,7 @@ aktive Bahn), Laden/Speichern als JSON; Doppelklick schaltet die Sichtbarkeit.
 
 ## 12 Dateien und Ablageorte
 
-Den Aufbau des Projektordners zeigt Abschnitt 2.6.
+Den Aufbau des Projektordners zeigt Abschnitt 2.7.
 
 | Ort | Inhalt |
 |---|---|
@@ -931,7 +1109,7 @@ dem Vorbild der vorhandenen.
 
 | Fassung (Vorschlag) | Inhalt | Aufwand |
 |---|---|---|
-| 2.4 | CIRC in der Punktliste mit einem Feld `hilf=X,Y,Z` für den Hilfspunkt; im Fahrfenster nur noch PTP und LIN; Taste „Go“ streichen, „Ins Fahrfenster“ wird die Haupttaste; Punktlisten laden und speichern; Quellen des Wrappers und Pilz-Patch ins Repository | klein bis mittel |
+| 2.4 | CIRC in der Punktliste mit einem Feld `hilf=X,Y,Z` für den Hilfspunkt; im Fahrfenster nur noch PTP und LIN; Taste „Go“ streichen, „Ins Fahrfenster“ wird die Haupttaste; Punktlisten laden und speichern | klein bis mittel |
 | 2.5 | Intrinsic messen: fertige Bahn auf Kollision prüfen und das Ergebnis in Bericht und CSV schreiben; Jerk je Achse ausrechnen und gegen die Joint Limits melden; Verrundung je Ecke statt eines Radius für alle | mittel |
 | 3.0 | Intrinsic begrenzen: Grenze für die Drehgeschwindigkeit des TCP (Änderung im Wrapper, neuer Wrapper- und Auftragsstand); Variante „Intrinsic + Ruckig“ mit Jerk-Glättung | hoch |
 | offen | Ansteuerung eines echten Roboters über ros2_control; Hindernisse in der Planning Scene; einheitliche Namen im Code (Teil I, Abschnitt 1.2) | – |

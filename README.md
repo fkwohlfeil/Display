@@ -20,7 +20,11 @@ an. Er braucht weder ROS noch die URDF.
 - ROS 2 Jazzy mit MoveIt, `moveit_py` (`sudo apt install ros-jazzy-moveit-py`) und RViz2
 - Python 3.12 mit `tkinter` und `PyYAML`
 - Für Intrinsic: ein gebauter `intrinsic_toppra_wrapper` aus Intrinsic Core (Bazel),
-  standardmäßig unter `~/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper`
+  standardmäßig unter `~/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper`.
+  Die Quellen liegen in [intrinsic_toppra_wrapper/](intrinsic_toppra_wrapper/); Bau
+  siehe `docs/Bedienerdokumentation.md`, Abschnitt 2.4
+- Optional für die einstellbare Pilz-Abtastzeit: MoveIt-Overlay mit
+  [patch_pilz_sampling_time_1.py](patch_pilz_sampling_time_1.py) (Abschnitt 2.3 ebenda)
 
 URDF (`bmKinematic.urdf`), Sicherungen (`URDF_Speicher/`) und Aufzeichnungen
 (`TCP_Fahrten/`) liegen standardmäßig neben den Skripten. Umlenken lassen sie
@@ -482,6 +486,8 @@ Einzelheiten stehen im Kopfkommentar von `intrinsic_lin_rechner.py`.
 | `TCP_Fahrten/bahn_*.csv` | aufgezeichnete Fahrten |
 | `TCP_Fahrten/plan_*.csv` | geplante Bahnen. Bei `plan_intrinsic_*` sind die Parameter im Namen kodiert, z. B. `r` Radius, `v` Override, `ga`, `ue` |
 | `bmKinematic.urdf` | Robotermodell |
+| `intrinsic_toppra_wrapper/` | Quellen des Wrappers (`BUILD`, `.cc`, `json_klein.h`) und ein Beispielauftrag; gebaut wird im Baum von Intrinsic Core |
+| `patch_pilz_sampling_time_1.py` | Patch für Pilz 2.12.4: Abtastzeit als ROS-Parameter (`--pruefen`, `--zurueck`) |
 | `URDF_Speicher/` | automatische Sicherungen bearbeiteter URDF-Stände |
 | `archiv/lin_arbeitsdateien/` | frühere Arbeitsdateien des LIN-Rechners (neue im Projektordner ignoriert `.gitignore`) |
 

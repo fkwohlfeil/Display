@@ -796,6 +796,12 @@ Jede Antwort trägt `"ok"`; bei `false` steht der Grund in `"fehler"`. Die Datei
 liegen in einem Unterordner `lin_*` des Rechner-Arbeitsordners
 (`a<n>_lin_kurve_auftrag.json` usw.). Mindeststand des Wrappers: 3.
 
+Die Quellen (`BUILD`, `intrinsic_toppra_wrapper.cc`, `json_klein.h`) und ein
+Beispielauftrag für den Modus `toppra` (`beispiel_auftrag_wrapper.json`) liegen
+im Projekt unter `intrinsic_toppra_wrapper/`. Bazel baut den Wrapper aber nur im
+Baum von Intrinsic Core; dorthin werden die Quellen vor jedem Bau kopiert
+(Teil II, Abschnitt 2.4). Maßgeblich ist die Fassung im Projekt.
+
 ### 5.8 Dateiformat Punktliste
 
 ```text

@@ -47,11 +47,12 @@ einem fertig eingerichteten Rechner geht es direkt mit Abschnitt 3 weiter.
 | MoveIt 2 mit Pilz | 2.12.4 | Planen, IK, Punktfolgen |
 | `moveit_py` | 2.12.4 | Verfahren TOTG und Intrinsic |
 | Python | 3.12 mit `tkinter`, PyYAML, NumPy, Pillow | Oberfläche, Rechner, Bildexport der Bahnansicht |
-| Intrinsic Core | Release `20260922.0` | nur Verfahren Intrinsic |
-| Bazel (über Bazelisk) | 8.8.0 | nur Bau des Intrinsic-Wrappers |
+| Intrinsic-Wrapper | Stand 3, gebaut gegen Intrinsic Core `20260922.0` | Verfahren Intrinsic; liegt fertig im Projekt |
+| Intrinsic Core, Bazel 8.8.0 | – | nur zum Selbstbau des Wrappers (Anhang B) |
 
-Rechner: x86-64 mit 16 GB Arbeitsspeicher und rund 30 GB freiem Platz, davon
-etwa 19 GB allein für den Bazel-Cache von Intrinsic Core.
+Rechner: x86-64 mit AVX2 (Intel ab Haswell) und 16 GB Arbeitsspeicher. Freier
+Platz: für ROS 2, MoveIt und Projekt reichen etwa 10 GB; wer den Wrapper selbst
+baut (Anhang B), braucht rund 30 GB, davon 19 GB allein für den Bazel-Cache.
 
 ### 2.1 Ubuntu 24.04 unter Windows 11 (WSL2)
 
@@ -306,71 +307,56 @@ Ob der Patch geladen ist, zeigt das Log von `move_group`
 Das Skript ist gegen Pilz 2.12.4 geprüft; mit `--pruefen` stellt es fest, ob
 der Patch angewendet ist, mit `--zurueck` entfernt es ihn.
 
-### 2.4 Intrinsic Core und Wrapper
+### 2.4 Intrinsic-Wrapper einrichten
 
-Nur für das Verfahren Intrinsic. Gebraucht wird nicht die Laufzeitumgebung von
-Intrinsic Core (k3s, `inctl`, OMTS aus deren Getting-Started-Anleitung), sondern
-nur ein Teil der Bibliotheken für Bahnkurven und TOPP-RA. Daraus baut Bazel ein
-einzelnes Programm, den `intrinsic_toppra_wrapper`. Seine Quellen liegen im
-Projektordner unter `intrinsic_toppra_wrapper/`; den Projektordner vorher nach
-`~/Display` kopieren (Abschnitt 2.5).
+Nur für das Verfahren Intrinsic. Der `intrinsic_toppra_wrapper` ist ein
+kleines eigenes Programm, das Bahnkurven und TOPP-RA aus Intrinsic Core
+aufruft. Er liegt fertig gebaut im Projekt unter
+`intrinsic_toppra_wrapper/bin/`; Intrinsic Core und Bazel sind dafür **nicht**
+nötig. Den Projektordner vorher nach `~/Display` kopieren (Abschnitt 2.5).
 
 ```bash
-# Intrinsic Core in genau diesem Release
-sudo apt install -y git curl
-cd ~
-git clone --branch 20260922.0 https://github.com/intrinsic-ai/intrinsic-core.git
+W=~/Display/intrinsic_toppra_wrapper/bin/intrinsic_toppra_wrapper
+ls -l $W                                # -rwxr-xr-x … rund 5 MB
+chmod +x $W                             # falls das "x" fehlt
+$W --pruefen
 
-# Bazelisk als "bazel"; holt die Bazel-Version aus .bazelversion (8.8.0)
-curl -L -o /tmp/bazelisk \
-    https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
-sudo install -m 755 /tmp/bazelisk /usr/local/bin/bazel
-
-# Quellen des Wrappers aus dem Projekt in den Baum von Intrinsic Core legen
-mkdir -p ~/intrinsic-core/intrinsic_toppra_wrapper
-cd ~/Display/intrinsic_toppra_wrapper
-cp BUILD intrinsic_toppra_wrapper.cc json_klein.h ~/intrinsic-core/intrinsic_toppra_wrapper/
-
-# bauen; --jobs=4 begrenzt den Speicherbedarf
-cd ~/intrinsic-core
-bazel build --jobs=4 //intrinsic_toppra_wrapper:intrinsic_toppra_wrapper
-
-# prüfen
-bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper --pruefen
+# Pfad für Oberfläche und Launch dauerhaft festlegen
+echo "export INTRINSIC_WRAPPER=$W" >> ~/.bashrc
+source ~/.bashrc
+echo $INTRINSIC_WRAPPER                 # zeigt den vollen Pfad
 ```
 
-Erwartete Ausgabe der Prüfung:
+Erwartete Ausgabe von `--pruefen`:
 
 ```text
 intrinsic_toppra_wrapper Stand 3, intrinsic-core 20260922.0
 ok
 ```
 
-- Beim ersten Bau lädt Bazel einen eigenen Compiler (LLVM) und alle
-  Fremdbibliotheken herunter. Das dauert lange und belegt in `~/.cache/bazel`
-  rund 19 GB; spätere Bauten gehen schnell.
-- Die Anleitung von Intrinsic Core setzt für die vollständige Laufzeitumgebung
-  Ubuntu 26.04 voraus. Der Wrapper allein baut und läuft unter Ubuntu 24.04
-  (getestet).
-- Intrinsic Core (Apache 2.0) bleibt unverändert; der Wrapper ist eigener Code
-  und nutzt dessen Bibliotheken nur als Abhängigkeiten.
-- Liegt der Wrapper an anderer Stelle als
-  `~/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper`,
-  den Pfad mit `export INTRINSIC_WRAPPER=…` in `~/.bashrc` oder beim Start mit
-  `intrinsic_wrapper:=…` angeben.
-- Den Wrapper nur im Projekt ändern (`~/Display/intrinsic_toppra_wrapper/`),
-  dann die Quellen wie oben nach `~/intrinsic-core/` kopieren und denselben
-  `bazel build` wiederholen. Die Kopie in Intrinsic Core ist nur die
-  Bauvorlage. Die Oberfläche verlangt mindestens Wrapper-Stand 3.
-- `beispiel_auftrag_wrapper.json` im selben Ordner ist ein kleiner Auftrag für
-  den Modus `toppra`; damit lässt sich der Wrapper ohne Oberfläche aufrufen
-  (die Antwort muss `"ok": true` enthalten):
+- Voraussetzungen: Ubuntu 24.04 und ein x86-64-Prozessor mit AVX2, also Intel
+  ab Haswell von 2013 oder ein AMD mit AVX2; für diese Generation baut
+  Intrinsic Core. Prüfen mit `grep -m1 -o avx2 /proc/cpuinfo`, die Ausgabe
+  muss `avx2` lauten. Meldet `--pruefen` „Ungültiger Maschinenbefehl“ bzw.
+  „Illegal instruction“, fehlt AVX2 und der Wrapper läuft auf diesem Rechner
+  nicht.
+- Ohne `INTRINSIC_WRAPPER` sucht die Oberfläche den Wrapper unter
+  `~/intrinsic-core/bazel-bin/…`, also dort, wo ihn nur ein Selbstbau ablegt.
+  Für einen einzelnen Start geht auch `intrinsic_wrapper:=…` (Abschnitt 3).
+- Liegt das Projekt nicht unter `~/Display`, die erste Zeile anpassen.
+- Ein Testauftrag ohne Oberfläche; die Antwort muss `"ok": true` enthalten:
 
   ```bash
   cd ~/Display/intrinsic_toppra_wrapper
-  ~/intrinsic-core/bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper \
-      beispiel_auftrag_wrapper.json /tmp/antwort.json
+  $INTRINSIC_WRAPPER beispiel_auftrag_wrapper.json /tmp/antwort.json
   ```
+
+::: hinweis
+**Selbst bauen ist nur nötig,** wenn jemand `intrinsic_toppra_wrapper.cc`
+ändert oder auf ein anderes Release von Intrinsic Core wechselt. Dafür braucht
+es Intrinsic Core, Bazel und rund 19 GB Platz; die Schritte stehen in
+**Anhang B** am Ende dieses Teils.
+:::
 
 ### 2.5 Projekt einrichten
 
@@ -391,6 +377,7 @@ cd ~/Display
 python3 test_fassung_2_3.py                  # Tests ohne ROS, am Ende "OK"
 python3 totg_rechner.py --pruefen            # "moveit_core 2.12.4 <pfad>" und "ok"
 python3 intrinsic_lin_rechner.py --pruefen   # ebenso
+$INTRINSIC_WRAPPER --pruefen                 # "Stand 3, …" und "ok"
 ros2 launch display_launch4.py               # Oberfläche und RViz2
 ```
 
@@ -409,12 +396,14 @@ Auf dem Rechner:
 ```text
 ~/                                       Home-Verzeichnis in Ubuntu
 ├── Display/                             dieses Projekt (Ort frei wählbar)
+├── ws_moveit/                           optional: Overlay mit gepatchtem Pilz
+│   └── src/  build/  install/
+│
+│   nur beim Selbstbau des Wrappers (Anhang B):
 ├── intrinsic-core/                      Intrinsic Core 20260922.0
 │   ├── intrinsic_toppra_wrapper/        Kopie der Wrapper-Quellen aus Display/
 │   └── bazel-bin/intrinsic_toppra_wrapper/
-│       └── intrinsic_toppra_wrapper     gebautes Programm (Standardpfad)
-├── ws_moveit/                           optional: Overlay mit gepatchtem Pilz
-│   └── src/  build/  install/
+│       └── intrinsic_toppra_wrapper     frisch gebautes Programm
 └── .cache/bazel/                        Bazel-Cache (rund 19 GB)
 
 /opt/ros/jazzy/                          ROS 2 Jazzy und MoveIt 2 (apt)
@@ -441,10 +430,10 @@ Display/
 ├── intrinsic_lin_auftrag.py         Joint Limits lesen; Hilfsskript
 ├── test_*.py  mutation_intrinsic_folge.py
 │                                    Tests
-├── intrinsic_toppra_wrapper/        Quellen des Intrinsic-Wrappers (Abschnitt 2.4)
+├── intrinsic_toppra_wrapper/        Intrinsic-Wrapper: Quellen und bin/ (Abschnitt 2.4)
 ├── patch_pilz_sampling_time_1.py    Patch für Pilz: einstellbare Abtastzeit
 ├── patch_lin_rechner_mimic_3.py     früherer Patch des LIN-Rechners
-├── README.md  .gitignore
+├── README.md  .gitignore  .gitattributes
 ├── docs/                            diese Dokumentation (Markdown, Bilder, PDF)
 ├── TCP_Fahrten/                     Bahnen als CSV (bahn_*, plan_*)
 ├── URDF_Speicher/                   Sicherungen der URDF
@@ -1040,7 +1029,7 @@ aktive Bahn), Laden/Speichern als JSON; Doppelklick schaltet die Sichtbarkeit.
 | „TOTG kennt einen Override fuer die ganze Bahn …“ (ebenso Intrinsic) | `tempo`/`beschleunigung` wechseln in der Liste | nur einmal am Anfang setzen |
 | „Intrinsic verrundet die ganze Kurve mit einem Wert …“ | verschiedene Radien > 0 zwischen LIN-Zeilen | einen gemeinsamen Radius verwenden |
 | „TOTG/Intrinsic braucht die Parameterdatei des laufenden move_group …“ | `move_group` fehlt oder ist veraltet | Neu starten |
-| „Intrinsic-Wrapper nicht ausfuehrbar …“ | Wrapper nicht gebaut oder Pfad falsch | bauen bzw. `intrinsic_wrapper:=` beim Start angeben |
+| „Intrinsic-Wrapper nicht ausfuehrbar …“ | `INTRINSIC_WRAPPER` nicht gesetzt, Pfad falsch oder Ausführrecht fehlt | Abschnitt 2.4: Pfad setzen, `chmod +x`; für einen Start auch `intrinsic_wrapper:=…` |
 | „Halte-Taster nimmt nicht an: es wird noch gebremst …“ | Bremsrampe läuft | kurz warten, neu drücken |
 | „Drehkonvention nicht umgeschaltet: eine Aufzeichnung laeuft“ | Aufzeichnung aktiv | Aufzeichnung anhalten |
 | „Keine TF-Ausgabe seit … s“ | TF angehalten oder ROS-Takt gestört | Haken „TF senden“ prüfen; sonst Programm neu starten |
@@ -1113,3 +1102,112 @@ dem Vorbild der vorhandenen.
 | 2.5 | Intrinsic messen: fertige Bahn auf Kollision prüfen und das Ergebnis in Bericht und CSV schreiben; Jerk je Achse ausrechnen und gegen die Joint Limits melden; Verrundung je Ecke statt eines Radius für alle | mittel |
 | 3.0 | Intrinsic begrenzen: Grenze für die Drehgeschwindigkeit des TCP (Änderung im Wrapper, neuer Wrapper- und Auftragsstand); Variante „Intrinsic + Ruckig“ mit Jerk-Glättung | hoch |
 | offen | Ansteuerung eines echten Roboters über ros2_control; Hindernisse in der Planning Scene; einheitliche Namen im Code (Teil I, Abschnitt 1.2) | – |
+
+## Anhang B · Wrapper selbst bauen (Bazel) {#anhang-wrapper-bauen .unnumbered .anhang}
+
+Zusatz zu Abschnitt 2.4. Für die normale Installation nicht nötig, denn das
+Projekt enthält den Wrapper fertig gebaut. Selbst bauen muss man nur, wenn
+`intrinsic_toppra_wrapper.cc` geändert wird oder ein anderes Release von
+Intrinsic Core zum Einsatz kommen soll. Dafür genügt ein Rechner; das Ergebnis
+kommt ins Projekt und wird von dort wie in Abschnitt 2.4 verteilt.
+
+Gebraucht wird nicht die Laufzeitumgebung von Intrinsic Core (k3s, `inctl`,
+OMTS aus deren Getting-Started-Anleitung), sondern nur ein Teil der
+Bibliotheken für Bahnkurven und TOPP-RA. Bazel baut daraus ein einzelnes
+Programm.
+
+::: hinweis
+**Platz vorher prüfen:** Der erste Bau lädt einen eigenen Compiler (LLVM) und
+alle Fremdbibliotheken und belegt in `~/.cache/bazel` rund 19 GB; dazu kommt
+Intrinsic Core selbst. Unter WSL liegt das alles auf dem Windows-Laufwerk C:.
+Vor dem Bau dort mindestens 30 GB frei haben. Läuft das Laufwerk währenddessen
+voll, kann Ubuntu Fehler wie „Read-only file system“ oder „Input/output error“
+melden. Dann nichts weiter bauen, in PowerShell Ubuntu beenden, auf C: Platz
+schaffen und Ubuntu neu öffnen:
+
+```powershell
+wsl --shutdown
+```
+:::
+
+```bash
+# Intrinsic Core in genau diesem Release
+sudo apt install -y git curl
+cd ~
+git clone --branch 20260922.0 https://github.com/intrinsic-ai/intrinsic-core.git
+ls ~/intrinsic-core/MODULE.bazel        # muss da sein, sonst hier aufhören
+
+# Bazelisk als "bazel"; holt die Bazel-Version aus .bazelversion (8.8.0)
+curl -L -o /tmp/bazelisk \
+    https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
+sudo install -m 755 /tmp/bazelisk /usr/local/bin/bazel
+
+# Quellen des Wrappers aus dem Projekt in den Baum von Intrinsic Core legen
+Q=~/Display/intrinsic_toppra_wrapper
+ls $Q                                   # BUILD  intrinsic_toppra_wrapper.cc  json_klein.h ...
+mkdir -p ~/intrinsic-core/intrinsic_toppra_wrapper
+cp $Q/BUILD $Q/intrinsic_toppra_wrapper.cc $Q/json_klein.h \
+    ~/intrinsic-core/intrinsic_toppra_wrapper/
+
+# bauen; --jobs=4 begrenzt den Speicherbedarf (bei 8 GB RAM: --jobs=2)
+cd ~/intrinsic-core
+bazel --version                         # muss "bazel 8.8.0" zeigen
+bazel build --jobs=4 //intrinsic_toppra_wrapper:intrinsic_toppra_wrapper
+
+# prüfen
+bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper --pruefen
+
+# ins Projekt übernehmen; von dort nutzen ihn Oberfläche und andere Rechner
+install -m 755 bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper \
+    ~/Display/intrinsic_toppra_wrapper/bin/
+```
+
+Die Prüfung muss dieselbe Ausgabe zeigen wie in Abschnitt 2.4, nach einer
+Änderung am Wrapper gegebenenfalls mit neuem Stand.
+
+**Wenn es nicht klappt:**
+
+- `ls $Q` meldet „No such file or directory“: Der Projektordner liegt nicht
+  unter `~/Display` oder ist älter als der Commit `4ba3eb0` (Oktober 2026),
+  mit dem die Quellen ins Repository kamen. Groß- und Kleinschreibung zählt:
+  die Datei heißt `BUILD`, nicht `Build`.
+- `ls ~/intrinsic-core/MODULE.bazel` scheitert oder `bazel build` meldet
+  „only supported from within a workspace“: Intrinsic Core fehlt, der
+  `git clone` ist gescheitert oder wurde übersprungen. Steht in
+  `~/intrinsic-core` nur der Ordner `intrinsic_toppra_wrapper`, den Ordner
+  beiseitelegen und den Block ab `git clone` wiederholen; in einen nicht
+  leeren Ordner klont git nicht:
+
+  ```bash
+  mv ~/intrinsic-core ~/intrinsic-core.leer
+  ```
+
+- `bazel --version` zeigt nicht 8.8.0, oder `bazel build` verlangt eine Datei
+  `WORKSPACE`: Es läuft eine alte Bazel statt Bazelisk, meist das Ubuntu-Paket
+  `bazel-bootstrap` (Version 4.2.3, kennt `MODULE.bazel` nicht). Entfernen,
+  dann die Bazelisk-Zeilen oben wiederholen:
+
+  ```bash
+  sudo apt remove -y bazel-bootstrap
+  hash -r
+  type -a bazel                         # erste Zeile: /usr/local/bin/bazel
+  ```
+
+**Hinweise:**
+
+- Den Wrapper nur im Projekt ändern (`~/Display/intrinsic_toppra_wrapper/`),
+  dann wie oben kopieren, bauen und übernehmen. Die Kopie in Intrinsic Core
+  ist nur die Bauvorlage. Die Oberfläche verlangt mindestens Wrapper-Stand 3.
+- Beim Committen mit dem Windows-git geht das Ausführrecht verloren, wenn es
+  nicht eigens gesetzt wird; mit dem git in Ubuntu bleibt es erhalten:
+
+  ```bash
+  git update-index --chmod=+x intrinsic_toppra_wrapper/bin/intrinsic_toppra_wrapper
+  ```
+- Der gebaute Wrapper verlangt einen Prozessor mit AVX2 (Intel ab Haswell),
+  weil Intrinsic Core in seiner `.bazelrc` für diese Generation baut.
+- Die Anleitung von Intrinsic Core setzt für die vollständige Laufzeitumgebung
+  Ubuntu 26.04 voraus. Der Wrapper allein baut und läuft unter Ubuntu 24.04
+  (getestet).
+- Intrinsic Core (Apache 2.0) bleibt unverändert; der Wrapper ist eigener Code
+  und nutzt dessen Bibliotheken nur als Abhängigkeiten.

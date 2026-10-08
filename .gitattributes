@@ -1,0 +1,21 @@
+# Zeilenenden: Diese Dateien laufen unter Linux und behalten LF, auch wenn das
+# Repository mit dem Windows-git (core.autocrlf=true) ausgecheckt wird. Mit
+# CRLF bricht z. B. bash bei docs/pdf_erzeugen.sh ab.
+*.py     text eol=lf
+*.sh     text eol=lf
+*.cc     text eol=lf
+*.h      text eol=lf
+BUILD    text eol=lf
+*.json   text eol=lf
+*.yaml   text eol=lf
+*.urdf   text eol=lf
+*.rviz   text eol=lf
+*.md     text eol=lf
+*.css    text eol=lf
+*.svg    text eol=lf
+
+# CSV-Bahnen bleiben, wie sie sind (teils CRLF): keine Regel.
+
+# Fertig gebautes Programm und PDF nie als Text behandeln
+intrinsic_toppra_wrapper/bin/* binary
+*.pdf    binary

@@ -114,6 +114,7 @@ h2 {
   border-bottom: 0.4mm solid var(--border);
   color: var(--text);
 }
+h2.anhang { break-before: page; }
 h3 { font-size: 11.5pt; margin: 6mm 0 2mm 0; color: var(--accent); }
 h4 { font-size: 10pt; margin: 4mm 0 1.5mm 0; }
 p { margin: 0 0 2.4mm 0; orphans: 3; widows: 3; }

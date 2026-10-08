@@ -113,7 +113,7 @@ Die Installation Schritt für Schritt steht in Teil II, Abschnitt 2.
 | `moveit_py` (`ros-jazzy-moveit-py`) | TOTG- und Intrinsic-Rechner | `python3 totg_rechner.py --pruefen` |
 | RViz2 | Anzeige | optional (`rviz:=false`) |
 | Python 3.12 mit `tkinter`, `PyYAML` | GUI, Parameterdateien | NumPy nur im Intrinsic-Rechner (Singulärwerte) |
-| `intrinsic_toppra_wrapper` | Kurve, Resampling, TOPP-RA aus Intrinsic Core | Bazel-Build, Pfad über `INTRINSIC_WRAPPER` |
+| `intrinsic_toppra_wrapper` | Kurve, Resampling, TOPP-RA aus Intrinsic Core | fertig im Projekt (`intrinsic_toppra_wrapper/bin/`), Pfad über `INTRINSIC_WRAPPER`; Selbstbau mit Bazel |
 | Pillow (optional) | JPEG/PNG-Export im Bahn-Viewer | sonst PostScript (`.eps`) |
 
 ### 2.2 Starten
@@ -796,11 +796,15 @@ Jede Antwort trägt `"ok"`; bei `false` steht der Grund in `"fehler"`. Die Datei
 liegen in einem Unterordner `lin_*` des Rechner-Arbeitsordners
 (`a<n>_lin_kurve_auftrag.json` usw.). Mindeststand des Wrappers: 3.
 
-Die Quellen (`BUILD`, `intrinsic_toppra_wrapper.cc`, `json_klein.h`) und ein
-Beispielauftrag für den Modus `toppra` (`beispiel_auftrag_wrapper.json`) liegen
-im Projekt unter `intrinsic_toppra_wrapper/`. Bazel baut den Wrapper aber nur im
-Baum von Intrinsic Core; dorthin werden die Quellen vor jedem Bau kopiert
-(Teil II, Abschnitt 2.4). Maßgeblich ist die Fassung im Projekt.
+Die Quellen (`BUILD`, `intrinsic_toppra_wrapper.cc`, `json_klein.h`), ein
+Beispielauftrag für den Modus `toppra` (`beispiel_auftrag_wrapper.json`) und
+das fertig gebaute Programm (`bin/intrinsic_toppra_wrapper`) liegen im Projekt
+unter `intrinsic_toppra_wrapper/`. Die Installation nutzt das fertige Programm
+über `INTRINSIC_WRAPPER` (Teil II, Abschnitt 2.4). Bazel baut den Wrapper nur
+im Baum von Intrinsic Core; dorthin werden die Quellen vor jedem Bau kopiert,
+das Ergebnis kommt zurück nach `bin/` (Teil II, Anhang B). Maßgeblich ist die
+Fassung im Projekt. Das Programm braucht zur Laufzeit nur die
+Standardbibliotheken von Ubuntu 24.04 und einen Prozessor mit AVX2.
 
 ### 5.8 Dateiformat Punktliste
 

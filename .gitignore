@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# Herkunftsvermerk von Windows beim Kopieren nach WSL
+# (Dateiname endet auf ":Zone.Identifier", der Doppelpunkt ist dort U+F03A)
+*Zone.Identifier
+
+# Arbeitsdateien der Rechner, wenn sie von Hand im Projektordner laufen
+/lin_*/
+/lin_auftrag.json
+/lin_antwort.json
+/lin_params.yaml
+/totg_params.yaml

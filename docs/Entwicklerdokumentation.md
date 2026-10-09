@@ -800,7 +800,7 @@ Die Quellen (`BUILD`, `intrinsic_toppra_wrapper.cc`, `json_klein.h`), ein
 Beispielauftrag für den Modus `toppra` (`beispiel_auftrag_wrapper.json`) und
 das fertig gebaute Programm (`bin/intrinsic_toppra_wrapper`) liegen im Projekt
 unter `intrinsic_toppra_wrapper/`. Die Installation nutzt das fertige Programm
-über `INTRINSIC_WRAPPER` (Teil II, Abschnitt 2.4). Bazel baut den Wrapper nur
+über `INTRINSIC_WRAPPER` (Teil II, Abschnitt 2.5). Bazel baut den Wrapper nur
 im Baum von Intrinsic Core; dorthin werden die Quellen vor jedem Bau kopiert,
 das Ergebnis kommt zurück nach `bin/` (Teil II, Anhang B). Maßgeblich ist die
 Fassung im Projekt. Das Programm braucht zur Laufzeit nur die

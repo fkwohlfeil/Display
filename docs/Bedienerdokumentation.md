@@ -54,6 +54,25 @@ Rechner: x86-64 mit AVX2 (Intel ab Haswell) und 16 GB Arbeitsspeicher. Freier
 Platz: für ROS 2, MoveIt und Projekt reichen etwa 10 GB; wer den Wrapper selbst
 baut (Anhang B), braucht rund 30 GB, davon 19 GB allein für den Bazel-Cache.
 
+Jeder Installationsschritt ist in bis zu drei Teile gegliedert:
+
+::: anwenden
+Was zu tun ist: Befehle eingeben, Einstellungen setzen.
+:::
+
+::: pruefen
+Woran man erkennt, dass der Schritt geklappt hat. Erst weitermachen, wenn die
+Prüfung stimmt.
+:::
+
+::: fehler
+Was zu tun ist, wenn die Prüfung nicht stimmt oder eine Meldung erscheint.
+:::
+
+Befehle lassen sich aus der PDF kopieren. Mehrzeilige Blöcke laufen nach dem
+Einfügen Zeile für Zeile; die letzte Zeile wartet je nach Terminal noch auf
+Enter.
+
 ### 2.1 Ubuntu 24.04 unter Windows (WSL2)
 
 Entfällt bei einem nativ installierten Ubuntu 24.04. Die Schritte gelten für
@@ -65,26 +84,63 @@ Damit `wsl --install` nicht mittendrin abbricht, werden die Windows-Features
 und die WSL-Version vorher von Hand eingerichtet (Schritte 2 und 3). Wo beides
 schon stimmt, ist das nur eine Kontrolle.
 
-**Schritt 1: Voraussetzungen prüfen.**
+#### Schritt 1: Voraussetzungen prüfen
 
+::: pruefen
 | Prüfung | wo | Soll |
 |---|---|---|
 | Version und Build | Windows-Taste + R, `winver` | Windows 11 (getestet: 23H2) oder Windows 10 22H2 ab Build 19045.2311 |
 | Updates | Einstellungen → Windows Update (Windows 10: Einstellungen → Update und Sicherheit → Windows Update) | alle installiert |
 | Systemtyp | Einstellungen → System → Info | 64-Bit-Betriebssystem, x64-basierter Prozessor |
-| Virtualisierung | Task-Manager → Leistung → CPU | „Virtualisierung: Aktiviert“ |
+| Virtualisierung der CPU | Task-Manager oder `systeminfo`, siehe unten | eingeschaltet |
 
-- Ist die Virtualisierung deaktiviert, sie im BIOS/UEFI einschalten (Intel VT-x
-  bzw. AMD-V/SVM, je nach Hersteller unter „CPU“ oder „Advanced“).
-- Ein älteres Windows 10 zuerst aktualisieren (Abschnitt 2.2).
+**Virtualisierung der CPU.** WSL 2 lässt Ubuntu in einer virtuellen Maschine
+laufen; dafür muss der Prozessor seine Virtualisierung (Intel VT-x bzw. AMD-V)
+freigeben. Zwei Wege, beide ohne Administratorrechte:
 
-**Schritt 2: Windows-Features einschalten.** WSL 2 braucht zwei optionale
-Features von Windows: das Subsystem selbst und die VM-Plattform, die virtuelle
-Maschine, in der Ubuntu läuft. `wsl --install` schaltet sie normalerweise
-selbst ein, bricht mit einer alten WSL-Version aber womöglich schon vorher ab
-(Schritt 3). Darum hier von Hand: Windows-Taste + R, `optionalfeatures`
-eingeben. Im Fenster „Windows-Features aktivieren oder deaktivieren“ diese
-beiden Einträge anhaken:
+1. Task-Manager mit Strg + Umschalt + Esc öffnen (Windows 10: unten auf
+   „Mehr Details“), dann „Leistung“ → „CPU“. Rechts unter dem Diagramm muss
+   „Virtualisierung: Aktiviert“ stehen.
+2. In einer PowerShell den Abschnitt „Hyper-V“ der Systeminformationen
+   anzeigen (dauert einige Sekunden):
+
+   ```powershell
+   systeminfo | Select-String "Hyper-V" -Context 0,4
+   ```
+
+   | Ausgabe (in Klammern: englisches Windows) | Bedeutung |
+   |---|---|
+   | „Virtualisierung in Firmware aktiviert: Ja“ („Virtualization Enabled In Firmware: Yes“) | in Ordnung |
+   | „Es wurde ein Hypervisor erkannt“ („A hypervisor has been detected“) | in Ordnung: Ein Hypervisor läuft schon (z. B. WSL 2 oder Hyper-V), die Virtualisierung ist also an |
+   | „Virtualisierung in Firmware aktiviert: Nein“ („… No“) | ausgeschaltet, siehe Fehlerfall |
+
+Nicht auf `Get-CimInstance Win32_Processor` und dessen Feld
+`VirtualizationFirmwareEnabled` verlassen: Sobald ein Hypervisor läuft, zeigt
+es `False`, obwohl die Virtualisierung an ist.
+:::
+
+::: fehler
+- **Virtualisierung ausgeschaltet:** im BIOS/UEFI einschalten. Die Einstellung
+  heißt Intel VT-x, „Intel Virtualization Technology“ bzw. AMD-V oder „SVM
+  Mode“ und steht je nach Hersteller unter „CPU“, „Advanced“ oder „Security“.
+  Ins UEFI kommt man aus Windows über Einstellungen → System → Wiederherstellung
+  → „Erweiterter Start“ → „Jetzt neu starten“, dann Problembehandlung →
+  Erweiterte Optionen → UEFI-Firmwareeinstellungen (Windows 10: Einstellungen →
+  Update und Sicherheit → Wiederherstellung). Auf Firmenrechnern ist das
+  BIOS/UEFI oft gesperrt; dann die IT fragen.
+- **Älteres Windows 10:** zuerst aktualisieren (Abschnitt 2.2).
+:::
+
+#### Schritt 2: Windows-Features einschalten
+
+WSL 2 braucht zwei optionale Features von Windows: das Subsystem selbst und
+die VM-Plattform, die virtuelle Maschine, in der Ubuntu läuft. `wsl --install`
+schaltet sie normalerweise selbst ein, bricht mit einer alten WSL-Version aber
+womöglich schon vorher ab (Schritt 3). Darum hier von Hand.
+
+::: anwenden
+Windows-Taste + R, `optionalfeatures` eingeben. Im Fenster „Windows-Features
+aktivieren oder deaktivieren“ diese beiden Einträge anhaken:
 
 - „Windows-Subsystem für Linux“
 - „VM-Plattform“ (englisch „Virtual Machine Platform“)
@@ -96,42 +152,78 @@ mit Administratorrechten, danach ebenfalls neu starten:
 dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
 dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
 ```
+:::
 
-Nach dem Neustart kontrollieren, in einer PowerShell mit Administratorrechten;
-beide Zeilen müssen `Enabled` zeigen:
+::: pruefen
+Nach dem Neustart in einer PowerShell mit Administratorrechten; der eine Befehl
+zeigt beide Features, und beide müssen `State : Enabled` haben:
 
 ```powershell
-(Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State
-(Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State
+Get-WindowsOptionalFeature -Online | ? FeatureName -match 'Subsystem-Linux|MachinePlatform'
 ```
 
-- Die „VM-Plattform“ ist nicht VirtualBox. VirtualBox oder Hyper-V werden für
-  WSL nicht gebraucht. Ein schon installiertes VirtualBox läuft neben WSL 2
-  weiter, kann aber langsamer werden, weil es dann den Hypervisor von Windows
-  mitbenutzt.
+Erwartet (Reihenfolge kann wechseln):
 
-**Schritt 3: WSL aktualisieren.** Ubuntu 24.04 bietet WSL nur noch in seinem
-neuen Paketformat an, und das liest WSL erst ab Version 2.4.4. Ältere
-WSL-Versionen kennen den Namen `Ubuntu-24.04` deshalb nicht und melden
+```text
+FeatureName : Microsoft-Windows-Subsystem-Linux
+State       : Enabled
+
+FeatureName : VirtualMachinePlatform
+State       : Enabled
+```
+:::
+
+::: fehler
+- **`State : EnablePending`:** Windows wurde noch nicht neu gestartet. Neu
+  starten und erneut prüfen.
+- **`State : Disabled` oder ein Feature fehlt:** Anwenden wiederholen.
+- **„Für den angeforderten Vorgang sind erhöhte Rechte erforderlich“:** Die
+  PowerShell läuft ohne Administratorrechte. Windows-Taste, „PowerShell“
+  eingeben, Rechtsklick → „Als Administrator ausführen“.
+:::
+
+Die „VM-Plattform“ ist nicht VirtualBox. VirtualBox oder Hyper-V werden für
+WSL nicht gebraucht. Ein schon installiertes VirtualBox läuft neben WSL 2
+weiter, kann aber langsamer werden, weil es dann den Hypervisor von Windows
+mitbenutzt.
+
+#### Schritt 3: WSL aktualisieren
+
+Ubuntu 24.04 bietet WSL nur noch in seinem neuen Paketformat an, und das liest
+WSL erst ab Version 2.4.4. Ältere WSL-Versionen kennen den Namen
+`Ubuntu-24.04` deshalb nicht und melden
 `Ungültiger Verteilungsname: 'Ubuntu-24.04'`. Das betrifft unter Windows 10
 immer die eingebaute Version, unter Windows 11 ein WSL, das lange nicht
-aktualisiert wurde. Darum zuerst WSL aktualisieren, in einer PowerShell mit
-Administratorrechten:
+aktualisiert wurde.
+
+::: anwenden
+In einer PowerShell mit Administratorrechten:
 
 ```powershell
 wsl --update                       # aktuelle WSL-Version aus dem Microsoft Store, mit WSLg
+```
+:::
+
+::: pruefen
+```powershell
 wsl --version                      # "WSL-Version: 2.4.4.0" oder höher
 ```
+:::
 
-- Ist der Microsoft Store gesperrt (z. B. auf Firmenrechnern):
+::: fehler
+- **Microsoft Store gesperrt** (z. B. auf Firmenrechnern):
   `wsl --update --web-download`.
-- Kennt `wsl` die Optionen `--update` oder `--version` nicht, oder bleibt die
-  Version unter 2.4.4: das Installationspaket `wsl.<version>.x64.msi` unter
+- **`wsl` kennt `--update` oder `--version` nicht, oder die Version bleibt
+  unter 2.4.4:** das Installationspaket `wsl.<version>.x64.msi` unter
   „Assets“ der neuesten Version auf
   [github.com/microsoft/WSL/releases](https://github.com/microsoft/WSL/releases)
-  laden und mit Doppelklick installieren. Danach erneut `wsl --version`.
+  laden und mit Doppelklick installieren. Danach erneut prüfen.
+:::
 
-**Schritt 4: Ubuntu installieren.** In derselben PowerShell:
+#### Schritt 4: Ubuntu installieren
+
+::: anwenden
+In derselben PowerShell:
 
 ```powershell
 wsl --list --online                # Ubuntu-24.04 muss in der Liste stehen
@@ -139,42 +231,55 @@ wsl --install -d Ubuntu-24.04
 ```
 
 Fordert `wsl` dazu auf, Windows neu starten und `wsl --install -d Ubuntu-24.04`
-wiederholen.
+wiederholen. Nicht auf `wsl --install -d Ubuntu` ausweichen: Dieser Name
+liefert die jeweils aktuelle Ubuntu-LTS, nicht unbedingt 24.04. ROS 2 Jazzy
+braucht genau Ubuntu 24.04.
+:::
 
-- Nicht auf `wsl --install -d Ubuntu` ausweichen: Dieser Name liefert die
-  jeweils aktuelle Ubuntu-LTS, nicht unbedingt 24.04. ROS 2 Jazzy braucht
-  genau Ubuntu 24.04.
-- Meldet `wsl` den Fehler `0x80370102` (virtuelle Maschine startet nicht),
-  fehlt die Virtualisierung im BIOS/UEFI (Schritt 1) oder die „VM-Plattform“
-  (Schritt 2).
-- Bleibt die Installation bei 0,0 % stehen:
-  `wsl --install --web-download -d Ubuntu-24.04`.
-
-**Schritt 5: WSL prüfen.** In PowerShell (ohne Administratorrechte):
+::: pruefen
+In PowerShell (ohne Administratorrechte):
 
 ```powershell
 wsl -l -v            # Ubuntu-24.04 mit VERSION 2
 ```
+:::
 
-Steht bei Ubuntu-24.04 `VERSION 1`, mit `wsl --set-version Ubuntu-24.04 2`
-umstellen; Linux-Fenster gibt es nur mit WSL 2.
+::: fehler
+- **`VERSION 1`:** mit `wsl --set-version Ubuntu-24.04 2` umstellen;
+  Linux-Fenster gibt es nur mit WSL 2.
+- **Fehler `0x80370102`** (virtuelle Maschine startet nicht): Es fehlt die
+  Virtualisierung im BIOS/UEFI (Schritt 1) oder die „VM-Plattform“
+  (Schritt 2).
+- **Installation bleibt bei 0,0 % stehen:**
+  `wsl --install --web-download -d Ubuntu-24.04`.
+:::
 
-**Schritt 6: Ubuntu einrichten und Anzeige prüfen.** „Ubuntu 24.04“ aus dem
-Startmenü öffnen; beim ersten Start fragt Ubuntu nach Benutzername und
-Passwort. Dann das System aktualisieren und testen, ob Linux-Fenster
-erscheinen:
+#### Schritt 5: Ubuntu einrichten und Anzeige prüfen
+
+::: anwenden
+„Ubuntu 24.04“ aus dem Startmenü öffnen; beim ersten Start fragt Ubuntu nach
+Benutzername und Passwort. Dann das System aktualisieren und Tk installieren:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-echo $DISPLAY $WAYLAND_DISPLAY     # erwartet: ":0 wayland-0"
 sudo apt install -y python3-tk
+```
+:::
+
+::: pruefen
+```bash
+echo $DISPLAY $WAYLAND_DISPLAY     # erwartet: ":0 wayland-0"
 python3 -m tkinter                 # ein kleines Testfenster erscheint unter Windows
 ```
+:::
 
-- Bleiben `DISPLAY` und `WAYLAND_DISPLAY` leer oder erscheint kein Fenster, in
-  PowerShell `wsl --update` und `wsl --shutdown` ausführen und Ubuntu neu
-  öffnen. Ein eigener X-Server unter Windows (z. B. VcXsrv) wäre ein Ausweg,
-  ist aber nicht getestet und hier nicht beschrieben.
+::: fehler
+- **`DISPLAY` und `WAYLAND_DISPLAY` leer oder kein Fenster:** in PowerShell
+  `wsl --update` und `wsl --shutdown` ausführen und Ubuntu neu öffnen. Ein
+  eigener X-Server unter Windows (z. B. VcXsrv) wäre ein Ausweg, ist aber nicht
+  getestet und hier nicht beschrieben.
+:::
+
 - RViz2 braucht unter WSL Software-Rendering. Das Launch-Skript setzt es selbst
   (`software_gl:=true`, Standard); ein eigener Grafiktreiber für WSL ist nicht
   nötig.
@@ -207,13 +312,74 @@ Rechner ist Windows 11 die bessere Wahl.
   WSL-Version ist für Ubuntu 24.04 immer zu alt, und `wsl --install` bricht
   damit womöglich ab, bevor es die Features einschaltet.
 
-### 2.3 ROS 2 Jazzy und MoveIt 2
+### 2.3 Projekt herunterladen
+
+Das Projekt liegt öffentlich auf GitHub unter
+<https://github.com/fkwohlfeil/Display>. Am besten wird es direkt in Ubuntu
+nach `~/Display` geklont. So bleibt es ein Git-Repository und lässt sich
+später mit `git pull` aktualisieren. Der Ort ist frei wählbar: Modell,
+Sicherungen und Bahnen liegen standardmäßig neben den Skripten, und das
+Launch-Skript findet alles relativ zu sich selbst (Abschnitt 12).
+
+::: anwenden
+```bash
+sudo apt install -y git
+cd ~
+git clone https://github.com/fkwohlfeil/Display.git     # legt ~/Display an
+```
+
+**Ohne Git (Archiv).** Wer nur die Dateien braucht, lädt das Archiv des
+Zweigs `main`. Das ist dann kein Git-Repository; `git status` und `git pull`
+gehen darin nicht. Im Browser geht es auch über **Code → Download ZIP**.
+
+```bash
+cd ~
+curl -L https://github.com/fkwohlfeil/Display/archive/refs/heads/main.tar.gz | tar xz
+mv Display-main Display
+```
+
+**Nur einen Ordner**, z. B. die Übergabebahnen; dazu kommen die Dateien der
+obersten Ebene:
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/fkwohlfeil/Display.git
+cd Display && git sparse-checkout set Übergabe/Bahnen
+```
+
+Nicht unter Windows klonen oder entpacken und dann nach WSL kopieren: Dabei
+entstehen `*Zone.Identifier`-Dateien, und der Wrapper verliert sein
+Ausführrecht.
+:::
+
+::: pruefen
+```bash
+cd ~/Display
+git status                                # "nothing to commit, working tree clean"
+ls -l intrinsic_toppra_wrapper/bin/       # Wrapper mit "x": -rwxr-xr-x
+```
+
+Beim Archiv entfällt `git status`.
+:::
+
+::: fehler
+- **`cd ~/Display` scheitert nach ZIP oder Archiv:** Der entpackte Ordner
+  heißt `Display-main` und muss in `Display` umbenannt werden, sonst passen
+  die Befehle mit `~/Display` nicht.
+- **Wrapper ohne „x“:** `chmod +x`, siehe Abschnitt 2.5.
+:::
+
+Später aktualisieren: `cd ~/Display && git pull`.
+
+### 2.4 ROS 2 Jazzy und MoveIt 2
 
 Nach der offiziellen Anleitung „Ubuntu (deb packages)“ für Jazzy auf
 docs.ros.org, ergänzt um MoveIt und die Python-Pakete der Oberfläche; bei
 Abweichungen gilt die offizielle Anleitung. Lange Befehle sind mit `\` am
 Zeilenende umbrochen, damit sie sich unverändert aus der PDF kopieren lassen.
 
+**Paketquelle von ROS 2 eintragen**
+
+::: anwenden
 ```bash
 # UTF-8-Locale und Paketquelle "universe"
 sudo apt update && sudo apt install -y locales software-properties-common curl
@@ -233,34 +399,44 @@ curl -L -o /tmp/ros2-apt-source.deb \
     "$QUELLE/releases/download/$V/ros2-apt-source_$V.${U}_all.deb"
 sudo dpkg -i /tmp/ros2-apt-source.deb
 ```
+:::
 
-- Zeigt `echo "$V $U"` keine Versionsnummer, ist die Abfrage bei GitHub
-  gescheitert; dann nicht weitermachen, sondern `curl -s $API/releases/latest`
-  allein aufrufen und die Meldung lesen. Steht dort „SSL certificate problem:
-  self-signed certificate in certificate chain“, bricht ein Proxy im
-  Firmennetz die Verschlüsselung auf. Dann dessen Stammzertifikat (von der
-  IT) in Ubuntu eintragen und den Block wiederholen:
+::: pruefen
+- `echo "$V $U"` im Block oben zeigt eine Versionsnummer und `noble`.
+- Unter Ubuntu 24.04 müssen die Paketquellen `noble-updates` und
+  `noble-backports` eingetragen sein, sonst scheitert die Installation an
+  Abhängigkeiten:
+
+  ```bash
+  grep Suites /etc/apt/sources.list.d/ubuntu.sources
+  # erste Zeile muss lauten: Suites: noble noble-updates noble-backports
+  ```
+:::
+
+::: fehler
+- **Keine Versionsnummer:** Die Abfrage bei GitHub ist gescheitert; nicht
+  weitermachen, sondern `curl -s $API/releases/latest` allein aufrufen und die
+  Meldung lesen. Steht dort „SSL certificate problem: self-signed certificate
+  in certificate chain“, bricht ein Proxy im Firmennetz die Verschlüsselung
+  auf. Dann dessen Stammzertifikat (von der IT) in Ubuntu eintragen und den
+  Block wiederholen:
 
   ```bash
   sudo cp <zertifikat>.crt /usr/local/share/ca-certificates/
   sudo update-ca-certificates
   ```
-- Unter Ubuntu 24.04 müssen die Paketquellen `noble-updates` und
-  `noble-backports` eingetragen sein, sonst scheitert die Installation an
-  Abhängigkeiten. Prüfen:
-
-  ```bash
-  grep Suites /etc/apt/sources.list.d/ubuntu.sources
-  # erste Zeile muss lauten:  Suites: noble noble-updates noble-backports
-  ```
-
-  Fehlt etwas, die Zeile in der Datei so ergänzen und danach aktualisieren:
+- **In `Suites` fehlt etwas:** die Zeile in der Datei so ergänzen und danach
+  aktualisieren:
 
   ```bash
   sudo nano /etc/apt/sources.list.d/ubuntu.sources
   sudo apt clean && sudo apt update && sudo apt full-upgrade -y
   ```
+:::
 
+**ROS 2, MoveIt 2 und Python-Pakete installieren**
+
+::: anwenden
 ```bash
 # ROS 2, MoveIt 2 (mit Pilz und KDL) und moveit_py
 sudo apt update && sudo apt upgrade -y
@@ -276,7 +452,9 @@ sudo apt install -y python3-tk python3-yaml python3-numpy python3-pil
 echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
+:::
 
+::: pruefen
 Kurztest von ROS 2 wie in der offiziellen Anleitung, in zwei Terminals; im
 zweiten erscheinen die Nachrichten des ersten („I heard: …“), Ende mit Strg+C:
 
@@ -284,6 +462,13 @@ zweiten erscheinen die Nachrichten des ersten („I heard: …“), Ende mit Str
 ros2 run demo_nodes_cpp talker          # Terminal 1
 ros2 run demo_nodes_py listener         # Terminal 2
 ```
+:::
+
+::: fehler
+- **`ros2: command not found`:** Die ROS-Umgebung ist nicht geladen. Ein neues
+  Terminal öffnen oder `source /opt/ros/jazzy/setup.bash`.
+- **apt meldet nicht erfüllbare Abhängigkeiten:** `Suites` prüfen (oben).
+:::
 
 Auf dem Entwicklungsrechner liegt über den apt-Paketen zusätzlich ein
 Quellcode-Build von MoveIt 2.12.4 in `~/ws_moveit` (Overlay); `moveit_py` und
@@ -294,9 +479,9 @@ Version.
 (Abschnitt 5.3) wirkt nur mit einem gepatchten Pilz-Planner; sonst rechnet Pilz
 fest mit 0,1 s. Dafür wird nur das Pilz-Paket aus dem Quellcode gebaut, in
 einem eigenen Workspace über den apt-Paketen. Das Skript
-`patch_pilz_sampling_time_1.py` liegt im Projektordner; das Projekt vorher
-nach `~/Display` herunterladen (Abschnitt 2.5).
+`patch_pilz_sampling_time_1.py` liegt im Projektordner (Abschnitt 2.3).
 
+::: anwenden
 ```bash
 mkdir -p ~/ws_moveit/src && cd ~/ws_moveit/src
 git clone -b jazzy --filter=blob:none --sparse \
@@ -309,30 +494,46 @@ colcon build --packages-select pilz_industrial_motion_planner \
     --cmake-args -DCMAKE_BUILD_TYPE=Release
 echo "source ~/ws_moveit/install/setup.bash" >> ~/.bashrc
 ```
+:::
 
+::: pruefen
 Ob der Patch geladen ist, zeigt das Log von `move_group`
 (`/tmp/urdf_gui_moveit_*/move_group.log`) mit der Zeile „PILZ-PATCH aktiv“.
 Das Skript ist gegen Pilz 2.12.4 geprüft; mit `--pruefen` stellt es fest, ob
 der Patch angewendet ist, mit `--zurueck` entfernt es ihn.
+:::
 
-### 2.4 Intrinsic-Wrapper einrichten
+### 2.5 Intrinsic-Wrapper einrichten
 
 Nur für das Verfahren Intrinsic. Der `intrinsic_toppra_wrapper` ist ein
 kleines eigenes Programm, das Bahnkurven und TOPP-RA aus Intrinsic Core
 aufruft. Er liegt fertig gebaut im Projekt unter
 `intrinsic_toppra_wrapper/bin/`; Intrinsic Core und Bazel sind dafür **nicht**
-nötig. Das Projekt vorher nach `~/Display` herunterladen (Abschnitt 2.5).
+nötig.
+
+Voraussetzungen: Ubuntu 24.04 und ein x86-64-Prozessor mit AVX2, also Intel ab
+Haswell von 2013 oder ein AMD mit AVX2; für diese Generation baut Intrinsic
+Core. Prüfen mit `grep -m1 -o avx2 /proc/cpuinfo`, die Ausgabe muss `avx2`
+lauten.
+
+::: anwenden
+Liegt das Projekt nicht unter `~/Display`, die erste Zeile anpassen.
 
 ```bash
 W=~/Display/intrinsic_toppra_wrapper/bin/intrinsic_toppra_wrapper
-ls -l $W                                # -rwxr-xr-x … rund 5 MB
-chmod +x $W                             # falls das "x" fehlt
-$W --pruefen
+chmod +x $W                             # Ausführrecht sicherstellen
 
 # Pfad für Oberfläche und Launch dauerhaft festlegen
 echo "export INTRINSIC_WRAPPER=$W" >> ~/.bashrc
 source ~/.bashrc
+```
+:::
+
+::: pruefen
+```bash
 echo $INTRINSIC_WRAPPER                 # zeigt den vollen Pfad
+ls -l $INTRINSIC_WRAPPER                # -rwxr-xr-x … rund 5 MB
+$INTRINSIC_WRAPPER --pruefen
 ```
 
 Erwartete Ausgabe von `--pruefen`:
@@ -342,22 +543,27 @@ intrinsic_toppra_wrapper Stand 3, intrinsic-core 20260922.0
 ok
 ```
 
-- Voraussetzungen: Ubuntu 24.04 und ein x86-64-Prozessor mit AVX2, also Intel
-  ab Haswell von 2013 oder ein AMD mit AVX2; für diese Generation baut
-  Intrinsic Core. Prüfen mit `grep -m1 -o avx2 /proc/cpuinfo`, die Ausgabe
-  muss `avx2` lauten. Meldet `--pruefen` „Ungültiger Maschinenbefehl“ bzw.
-  „Illegal instruction“, fehlt AVX2 und der Wrapper läuft auf diesem Rechner
-  nicht.
-- Ohne `INTRINSIC_WRAPPER` sucht die Oberfläche den Wrapper unter
-  `~/intrinsic-core/bazel-bin/…`, also dort, wo ihn nur ein Selbstbau ablegt.
-  Für einen einzelnen Start geht auch `intrinsic_wrapper:=…` (Abschnitt 3).
-- Liegt das Projekt nicht unter `~/Display`, die erste Zeile anpassen.
-- Ein Testauftrag ohne Oberfläche; die Antwort muss `"ok": true` enthalten:
+Zusätzlich ein Testauftrag ohne Oberfläche; die Antwort in
+`/tmp/antwort.json` muss `"ok": true` enthalten:
 
-  ```bash
-  cd ~/Display/intrinsic_toppra_wrapper
-  $INTRINSIC_WRAPPER beispiel_auftrag_wrapper.json /tmp/antwort.json
-  ```
+```bash
+cd ~/Display/intrinsic_toppra_wrapper
+$INTRINSIC_WRAPPER beispiel_auftrag_wrapper.json /tmp/antwort.json
+```
+:::
+
+::: fehler
+- **„Ungültiger Maschinenbefehl“ bzw. „Illegal instruction“:** Dem Prozessor
+  fehlt AVX2; der Wrapper läuft auf diesem Rechner nicht.
+- **„No such file or directory“:** Das Projekt liegt nicht unter `~/Display`.
+  Die erste Zeile unter Anwenden anpassen und die Zeile mit
+  `INTRINSIC_WRAPPER` in `~/.bashrc` berichtigen (`nano ~/.bashrc`).
+- **„Permission denied“:** Das Ausführrecht fehlt; `chmod +x $INTRINSIC_WRAPPER`.
+:::
+
+Ohne `INTRINSIC_WRAPPER` sucht die Oberfläche den Wrapper unter
+`~/intrinsic-core/bazel-bin/…`, also dort, wo ihn nur ein Selbstbau ablegt.
+Für einen einzelnen Start geht auch `intrinsic_wrapper:=…` (Abschnitt 3).
 
 ::: hinweis
 **Selbst bauen ist nur nötig,** wenn jemand `intrinsic_toppra_wrapper.cc`
@@ -366,53 +572,9 @@ es Intrinsic Core, Bazel und rund 19 GB Platz; die Schritte stehen in
 **Anhang B** am Ende dieses Teils.
 :::
 
-### 2.5 Projekt herunterladen
-
-Das Projekt liegt öffentlich auf GitHub unter
-<https://github.com/fkwohlfeil/Display>. Am besten wird es direkt in Ubuntu
-nach `~/Display` geklont. So bleibt es ein Git-Repository und lässt sich
-später mit `git pull` aktualisieren. Der Ort ist frei wählbar: Modell,
-Sicherungen und Bahnen liegen standardmäßig neben den Skripten, und das
-Launch-Skript findet alles relativ zu sich selbst (Abschnitt 12).
-
-```bash
-sudo apt install -y git
-cd ~
-git clone https://github.com/fkwohlfeil/Display.git     # legt ~/Display an
-cd ~/Display
-git status        # "nothing to commit, working tree clean"
-ls -l intrinsic_toppra_wrapper/bin/       # Wrapper mit "x": -rwxr-xr-x
-```
-
-Später aktualisieren: `cd ~/Display && git pull`.
-
-**Ohne Git (Archiv).** Wer nur die Dateien braucht, lädt das Archiv des
-Zweigs `main`. Das ist dann kein Git-Repository; `git status` und `git pull`
-gehen darin nicht.
-
-```bash
-cd ~
-curl -L https://github.com/fkwohlfeil/Display/archive/refs/heads/main.tar.gz | tar xz
-mv Display-main Display
-```
-
-- Im Browser geht es auch über **Code → Download ZIP**. Der entpackte Ordner
-  heißt `Display-main` und muss in `Display` umbenannt werden, sonst passen
-  die Befehle mit `~/Display` nicht.
-- Nicht unter Windows klonen oder entpacken und dann nach WSL kopieren: Dabei
-  entstehen `*Zone.Identifier`-Dateien, und der Wrapper verliert sein
-  Ausführrecht (dann `chmod +x`, Abschnitt 2.4).
-
-**Nur einen Ordner**, z. B. die Übergabebahnen; dazu kommen die Dateien der
-obersten Ebene:
-
-```bash
-git clone --filter=blob:none --sparse https://github.com/fkwohlfeil/Display.git
-cd Display && git sparse-checkout set Übergabe/Bahnen
-```
-
 ### 2.6 Installation prüfen
 
+::: pruefen
 ```bash
 cd ~/Display
 python3 test_fassung_2_3.py                  # Tests ohne ROS, am Ende "OK"
@@ -424,11 +586,19 @@ ros2 launch display_launch4.py               # Oberfläche und RViz2
 
 - Der Pfad hinter `moveit_core` zeigt, welches MoveIt geladen wird:
   `/opt/ros/jazzy/…` (apt) oder `~/ws_moveit/install/…` (Overlay).
-- Eine Zeile „double free or corruption“ nach dem „ok“ entsteht beim Beenden
-  von MoveItPy; das Ergebnis der Prüfung gilt trotzdem.
 - In der Oberfläche **Parameter...** → **Neu starten**; nach einigen Sekunden
   steht in der Fußzeile `move_group  bereit`. Dann im Fenster „Punktfolge“ das
   Beispiel nacheinander mit Pilz, TOTG und Intrinsic planen.
+:::
+
+::: fehler
+- **„double free or corruption“ nach dem „ok“:** entsteht beim Beenden von
+  MoveItPy; das Ergebnis der Prüfung gilt trotzdem.
+- **Eine Prüfung meldet einen Fehler statt „ok“:** bei `totg_rechner.py` und
+  `intrinsic_lin_rechner.py` Abschnitt 2.4 (MoveIt, `moveit_py`) wiederholen,
+  beim Wrapper Abschnitt 2.5.
+- **Weitere Meldungen der Oberfläche:** Abschnitt 11.
+:::
 
 ### 2.7 Ordnerstruktur
 
@@ -471,7 +641,7 @@ Display/
 ├── intrinsic_lin_auftrag.py         Joint Limits lesen; Hilfsskript
 ├── test_*.py  mutation_intrinsic_folge.py
 │                                    Tests
-├── intrinsic_toppra_wrapper/        Intrinsic-Wrapper: Quellen und bin/ (Abschnitt 2.4)
+├── intrinsic_toppra_wrapper/        Intrinsic-Wrapper: Quellen und bin/ (Abschnitt 2.5)
 ├── patch_pilz_sampling_time_1.py    Patch für Pilz: einstellbare Abtastzeit
 ├── patch_lin_rechner_mimic_3.py     früherer Patch des LIN-Rechners
 ├── README.md  .gitignore  .gitattributes
@@ -696,7 +866,7 @@ TOTG und Intrinsic brauchen eine Beschleunigungsgrenze je Achse.
 | Abtastzeit | s | 0.100 |
 
 Diese Cartesian Limits gelten für LIN und CIRC mit Pilz. Die Abtastzeit wirkt nur mit
-einem gepatchten Pilz-Planner (Abschnitt 2.3, sonst fest 0,1 s); halbieren verdoppelt etwa die
+einem gepatchten Pilz-Planner (Abschnitt 2.4, sonst fest 0,1 s); halbieren verdoppelt etwa die
 Planungszeit einer LIN-Bahn.
 
 ### 5.4 Reiter „Kinematik“ (Neustart nötig)
@@ -1071,7 +1241,7 @@ aktive Bahn), Laden/Speichern als JSON; Doppelklick schaltet die Sichtbarkeit.
 | „TOTG kennt einen Override fuer die ganze Bahn …“ (ebenso Intrinsic) | `tempo`/`beschleunigung` wechseln in der Liste | nur einmal am Anfang setzen |
 | „Intrinsic verrundet die ganze Kurve mit einem Wert …“ | verschiedene Radien > 0 zwischen LIN-Zeilen | einen gemeinsamen Radius verwenden |
 | „TOTG/Intrinsic braucht die Parameterdatei des laufenden move_group …“ | `move_group` fehlt oder ist veraltet | Neu starten |
-| „Intrinsic-Wrapper nicht ausfuehrbar …“ | `INTRINSIC_WRAPPER` nicht gesetzt, Pfad falsch oder Ausführrecht fehlt | Abschnitt 2.4: Pfad setzen, `chmod +x`; für einen Start auch `intrinsic_wrapper:=…` |
+| „Intrinsic-Wrapper nicht ausfuehrbar …“ | `INTRINSIC_WRAPPER` nicht gesetzt, Pfad falsch oder Ausführrecht fehlt | Abschnitt 2.5: Pfad setzen, `chmod +x`; für einen Start auch `intrinsic_wrapper:=…` |
 | „Halte-Taster nimmt nicht an: es wird noch gebremst …“ | Bremsrampe läuft | kurz warten, neu drücken |
 | „Drehkonvention nicht umgeschaltet: eine Aufzeichnung laeuft“ | Aufzeichnung aktiv | Aufzeichnung anhalten |
 | „Keine TF-Ausgabe seit … s“ | TF angehalten oder ROS-Takt gestört | Haken „TF senden“ prüfen; sonst Programm neu starten |
@@ -1148,11 +1318,11 @@ dem Vorbild der vorhandenen.
 
 ## Anhang B · Wrapper selbst bauen (Bazel) {#anhang-wrapper-bauen .unnumbered .anhang}
 
-Zusatz zu Abschnitt 2.4. Für die normale Installation nicht nötig, denn das
+Zusatz zu Abschnitt 2.5. Für die normale Installation nicht nötig, denn das
 Projekt enthält den Wrapper fertig gebaut. Selbst bauen muss man nur, wenn
 `intrinsic_toppra_wrapper.cc` geändert wird oder ein anderes Release von
 Intrinsic Core zum Einsatz kommen soll. Dafür genügt ein Rechner; das Ergebnis
-kommt ins Projekt und wird von dort wie in Abschnitt 2.4 verteilt.
+kommt ins Projekt und wird von dort wie in Abschnitt 2.5 verteilt.
 
 Gebraucht wird nicht die Laufzeitumgebung von Intrinsic Core (k3s, `inctl`,
 OMTS aus deren Getting-Started-Anleitung), sondern nur ein Teil der
@@ -1173,6 +1343,7 @@ wsl --shutdown
 ```
 :::
 
+::: anwenden
 ```bash
 # Intrinsic Core in genau diesem Release
 sudo apt install -y git curl
@@ -1196,26 +1367,35 @@ cp $Q/BUILD $Q/intrinsic_toppra_wrapper.cc $Q/json_klein.h \
 cd ~/intrinsic-core
 bazel --version                         # muss "bazel 8.8.0" zeigen
 bazel build --jobs=4 //intrinsic_toppra_wrapper:intrinsic_toppra_wrapper
+```
+:::
 
-# prüfen
+::: pruefen
+```bash
 bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper --pruefen
+```
 
-# ins Projekt übernehmen; von dort nutzen ihn Oberfläche und andere Rechner
+Die Prüfung muss dieselbe Ausgabe zeigen wie in Abschnitt 2.5, nach einer
+Änderung am Wrapper gegebenenfalls mit neuem Stand.
+:::
+
+::: anwenden
+Erst nach erfolgreicher Prüfung ins Projekt übernehmen; von dort nutzen ihn
+Oberfläche und andere Rechner:
+
+```bash
 install -m 755 bazel-bin/intrinsic_toppra_wrapper/intrinsic_toppra_wrapper \
     ~/Display/intrinsic_toppra_wrapper/bin/
 ```
+:::
 
-Die Prüfung muss dieselbe Ausgabe zeigen wie in Abschnitt 2.4, nach einer
-Änderung am Wrapper gegebenenfalls mit neuem Stand.
-
-**Wenn es nicht klappt:**
-
-- `ls $Q` meldet „No such file or directory“: Der Projektordner liegt nicht
-  unter `~/Display` oder ist älter als der Commit `4ba3eb0` (Oktober 2026),
-  mit dem die Quellen ins Repository kamen. Groß- und Kleinschreibung zählt:
-  die Datei heißt `BUILD`, nicht `Build`.
-- `ls ~/intrinsic-core/MODULE.bazel` scheitert oder `bazel build` meldet
-  „only supported from within a workspace“: Intrinsic Core fehlt, der
+::: fehler
+- **`ls $Q` meldet „No such file or directory“:** Der Projektordner liegt
+  nicht unter `~/Display` oder ist älter als der Commit `4ba3eb0` (Oktober
+  2026), mit dem die Quellen ins Repository kamen. Groß- und Kleinschreibung
+  zählt: die Datei heißt `BUILD`, nicht `Build`.
+- **`ls ~/intrinsic-core/MODULE.bazel` scheitert oder `bazel build` meldet
+  „only supported from within a workspace“:** Intrinsic Core fehlt, der
   `git clone` ist gescheitert oder wurde übersprungen. Steht in
   `~/intrinsic-core` nur der Ordner `intrinsic_toppra_wrapper`, den Ordner
   beiseitelegen und den Block ab `git clone` wiederholen; in einen nicht
@@ -1225,16 +1405,17 @@ Die Prüfung muss dieselbe Ausgabe zeigen wie in Abschnitt 2.4, nach einer
   mv ~/intrinsic-core ~/intrinsic-core.leer
   ```
 
-- `bazel --version` zeigt nicht 8.8.0, oder `bazel build` verlangt eine Datei
-  `WORKSPACE`: Es läuft eine alte Bazel statt Bazelisk, meist das Ubuntu-Paket
-  `bazel-bootstrap` (Version 4.2.3, kennt `MODULE.bazel` nicht). Entfernen,
-  dann die Bazelisk-Zeilen oben wiederholen:
+- **`bazel --version` zeigt nicht 8.8.0, oder `bazel build` verlangt eine
+  Datei `WORKSPACE`:** Es läuft eine alte Bazel statt Bazelisk, meist das
+  Ubuntu-Paket `bazel-bootstrap` (Version 4.2.3, kennt `MODULE.bazel` nicht).
+  Entfernen, dann die Bazelisk-Zeilen oben wiederholen:
 
   ```bash
   sudo apt remove -y bazel-bootstrap
   hash -r
   type -a bazel                         # erste Zeile: /usr/local/bin/bazel
   ```
+:::
 
 **Hinweise:**
 

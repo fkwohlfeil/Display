@@ -166,7 +166,7 @@
       <inertia ixx="0.46" iyy="0.46" izz="0.067" ixy="0" ixz="0" iyz="0" />
     </inertial>
   </link>
-  <joint name="joint1" type="revolute">
+  <joint name="Q1" type="revolute">
     <parent link="base_link" />
     <child link="link_1" />
     <origin xyz="0 0 0.05" rpy="0 0 0" />

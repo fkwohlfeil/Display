@@ -41,6 +41,7 @@ awk 'FNR==1{im_code=0} /^ *```/{im_code=!im_code; next}
 pandoc Begriffe.md Entwicklerdokumentation.md Bedienerdokumentation.md \
   --from markdown --to html5 --standalone --embed-resources \
   --toc --toc-depth=2 --css pdf_stil.css --columns=10000 \
+  --lua-filter befehle_ganz.lua \
   --metadata title="URDF-GUI für Bahnplanung" \
   --metadata subtitle="Entwickler- und Bedienerdokumentation" \
   --metadata date="Stand: urdf_gui.py 2.3 · Oktober 2026" \

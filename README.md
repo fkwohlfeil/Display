@@ -21,11 +21,11 @@ an. Er braucht weder ROS noch die URDF.
 - Python 3.12 mit `tkinter` und `PyYAML`
 - Für Intrinsic: der `intrinsic_toppra_wrapper`. Er liegt fertig gebaut in
   [intrinsic_toppra_wrapper/bin/](intrinsic_toppra_wrapper/bin/) und wird über
-  `INTRINSIC_WRAPPER` eingebunden (`docs/Bedienerdokumentation.md`, Abschnitt 2.4).
+  `INTRINSIC_WRAPPER` eingebunden (`docs/Bedienerdokumentation.md`, Abschnitt 2.5).
   Braucht Ubuntu 24.04 und einen Prozessor mit AVX2. Selbst bauen mit Bazel nur
   nach Änderungen am Wrapper (ebenda, Anhang B)
 - Optional für die einstellbare Pilz-Abtastzeit: MoveIt-Overlay mit
-  [patch_pilz_sampling_time_1.py](patch_pilz_sampling_time_1.py) (Abschnitt 2.3 ebenda)
+  [patch_pilz_sampling_time_1.py](patch_pilz_sampling_time_1.py) (Abschnitt 2.4 ebenda)
 
 URDF (`bmKinematic.urdf`), Sicherungen (`URDF_Speicher/`) und Aufzeichnungen
 (`TCP_Fahrten/`) liegen standardmäßig neben den Skripten. Umlenken lassen sie
@@ -54,7 +54,7 @@ mv Display-main Display
 ```
 
 Weitere Wege (ZIP im Browser, nur ein Ordner) stehen in
-`docs/Bedienerdokumentation.md`, Abschnitt 2.5.
+`docs/Bedienerdokumentation.md`, Abschnitt 2.3.
 
 ## Starten
 
@@ -65,7 +65,7 @@ cd ~/Display
 ros2 launch display_launch4.py                       # GUI + RViz2
 ros2 launch display_launch4.py urdf:=/pfad/robot.urdf
 ros2 launch display_launch4.py rviz:=false           # nur die GUI
-ros2 launch display_launch4.py software_gl:=false    # native GPU statt Software-GL (WSL braucht true)
+ros2 launch display_launch4.py software_gl:=false    # native GPU; nicht unter WSL
 ros2 launch display_launch4.py intrinsic_wrapper:=/pfad/zum/intrinsic_toppra_wrapper
 ```
 

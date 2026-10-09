@@ -41,7 +41,7 @@ einem fertig eingerichteten Rechner geht es direkt mit Abschnitt 3 weiter.
 | Baustein | getesteter Stand | gebraucht für |
 |---|---|---|
 | Windows 11 mit WSL2 | Windows 11 Pro 23H2 | nur unter Windows; ein nativ installiertes Ubuntu geht ebenso |
-| Windows 10 mit WSL2 | nicht getestet; mindestens 22H2, Build 19045.2311 | statt Windows 11 (Abschnitt 2.2) |
+| Windows 10 mit WSL2 | nicht getestet; mindestens 22H2, Build 19045.2311 | statt Windows 11; Schritte wie dort, Ergänzungen in Abschnitt 2.2 |
 | Ubuntu | 24.04 LTS „Noble“ | alles |
 | ROS 2 | Jazzy (`ros-jazzy-desktop`) | Oberfläche mit ROS, RViz2 |
 | MoveIt 2 mit Pilz | 2.12.4 | Planen, IK, Punktfolgen |
@@ -54,69 +54,37 @@ Rechner: x86-64 mit AVX2 (Intel ab Haswell) und 16 GB Arbeitsspeicher. Freier
 Platz: für ROS 2, MoveIt und Projekt reichen etwa 10 GB; wer den Wrapper selbst
 baut (Anhang B), braucht rund 30 GB, davon 19 GB allein für den Bazel-Cache.
 
-### 2.1 Ubuntu 24.04 unter Windows 11 (WSL2)
+### 2.1 Ubuntu 24.04 unter Windows (WSL2)
 
-Entfällt bei einem nativ installierten Ubuntu 24.04; unter Windows 10 gilt
-stattdessen Abschnitt 2.2. In einer PowerShell mit Administratorrechten:
+Entfällt bei einem nativ installierten Ubuntu 24.04. Die Schritte gelten für
+Windows 11 und Windows 10 gleichermaßen; was unter Windows 10 zusätzlich zu
+beachten ist, steht in Abschnitt 2.2. Ab Abschnitt 2.3 wird nur noch in Ubuntu
+gearbeitet.
 
-```powershell
-wsl --install -d Ubuntu-24.04
-```
+Damit `wsl --install` nicht mittendrin abbricht, werden die Windows-Features
+und die WSL-Version vorher von Hand eingerichtet (Schritte 2 und 3). Wo beides
+schon stimmt, ist das nur eine Kontrolle.
 
-Danach Windows neu starten und „Ubuntu 24.04“ aus dem Startmenü öffnen; beim
-ersten Start fragt Ubuntu nach Benutzername und Passwort. Dann das System
-aktualisieren:
-
-```bash
-sudo apt update && sudo apt upgrade -y
-```
-
-- Meldet `wsl` „Ungültiger Verteilungsname“, ist die WSL-Version älter als
-  2.4.4: zuerst `wsl --update`, dann erneut installieren (Abschnitt 2.2,
-  Schritt 3).
-- Die Fenster der Linux-Programme (Oberfläche, RViz2) zeigt Windows 11 über
-  WSLg ohne weitere Einrichtung an.
-- RViz2 braucht unter WSL Software-Rendering. Das Launch-Skript setzt es selbst
-  (`software_gl:=true`, Standard).
-- Im Windows-Explorer sind die Linux-Dateien unter
-  `\\wsl.localhost\<Distribution>\home\<benutzer>\` erreichbar, z. B.
-  `\\wsl.localhost\Ubuntu-24.04\home\<benutzer>\Display`.
-
-### 2.2 Ubuntu 24.04 unter Windows 10 (WSL2)
-
-Gilt statt Abschnitt 2.1, wenn der Rechner unter Windows 10 läuft. Ab
-Abschnitt 2.3 ist alles gleich, denn dann wird nur noch in Ubuntu gearbeitet.
-
-::: hinweis
-**Unter Windows 10 nicht getestet.** Die Schritte folgen den Vorgaben von
-Microsoft für WSL2 und WSLg. Windows 10 bekommt seit dem 14. Oktober 2025
-Sicherheitsupdates nur noch über das ESU-Programm; für einen neu eingerichteten
-Rechner ist Windows 11 die bessere Wahl.
-:::
-
-**Schritt 1: Voraussetzungen prüfen.** Ohne WSLg zeigt Windows die Fenster der
-Oberfläche und von RViz2 nicht an. WSLg gibt es unter Windows 10 nur mit der
-WSL-Version aus dem Microsoft Store. Microsoft verlangt dafür mindestens
-Build 19044 mit dem Update KB5020030 (November 2022). 22H2 ist die letzte
-Version von Windows 10 und erfüllt das mit allen Updates sicher.
+**Schritt 1: Voraussetzungen prüfen.**
 
 | Prüfung | wo | Soll |
 |---|---|---|
-| Version und Build | Windows-Taste + R, `winver` | Version 22H2, Build 19045.2311 oder höher |
-| Updates | Einstellungen → Update und Sicherheit → Windows Update | alle installiert |
+| Version und Build | Windows-Taste + R, `winver` | Windows 11 (getestet: 23H2) oder Windows 10 22H2 ab Build 19045.2311 |
+| Updates | Einstellungen → Windows Update (Windows 10: Einstellungen → Update und Sicherheit → Windows Update) | alle installiert |
 | Systemtyp | Einstellungen → System → Info | 64-Bit-Betriebssystem, x64-basierter Prozessor |
 | Virtualisierung | Task-Manager → Leistung → CPU | „Virtualisierung: Aktiviert“ |
 
-- Ist der Build älter, zuerst über Windows Update auf 22H2 aktualisieren.
 - Ist die Virtualisierung deaktiviert, sie im BIOS/UEFI einschalten (Intel VT-x
   bzw. AMD-V/SVM, je nach Hersteller unter „CPU“ oder „Advanced“).
+- Ein älteres Windows 10 zuerst aktualisieren (Abschnitt 2.2).
 
 **Schritt 2: Windows-Features einschalten.** WSL 2 braucht zwei optionale
-Features von Windows. `wsl --install` schaltet sie normalerweise selbst ein,
-bricht unter Windows 10 aber womöglich schon vorher ab (Schritt 3). Darum hier
-von Hand: Windows-Taste + R, `optionalfeatures` eingeben. Im Fenster
-„Windows-Features aktivieren oder deaktivieren“ diese beiden Einträge
-anhaken:
+Features von Windows: das Subsystem selbst und die VM-Plattform, die virtuelle
+Maschine, in der Ubuntu läuft. `wsl --install` schaltet sie normalerweise
+selbst ein, bricht mit einer alten WSL-Version aber womöglich schon vorher ab
+(Schritt 3). Darum hier von Hand: Windows-Taste + R, `optionalfeatures`
+eingeben. Im Fenster „Windows-Features aktivieren oder deaktivieren“ diese
+beiden Einträge anhaken:
 
 - „Windows-Subsystem für Linux“
 - „VM-Plattform“ (englisch „Virtual Machine Platform“)
@@ -129,11 +97,26 @@ dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux 
 dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
 ```
 
+Nach dem Neustart kontrollieren, in einer PowerShell mit Administratorrechten;
+beide Zeilen müssen `Enabled` zeigen:
+
+```powershell
+(Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State
+(Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform).State
+```
+
+- Die „VM-Plattform“ ist nicht VirtualBox. VirtualBox oder Hyper-V werden für
+  WSL nicht gebraucht. Ein schon installiertes VirtualBox läuft neben WSL 2
+  weiter, kann aber langsamer werden, weil es dann den Hypervisor von Windows
+  mitbenutzt.
+
 **Schritt 3: WSL aktualisieren.** Ubuntu 24.04 bietet WSL nur noch in seinem
-neuen Paketformat an, und das liest WSL erst ab Version 2.4.4. Die in
-Windows 10 eingebaute WSL-Version kennt den Namen `Ubuntu-24.04` deshalb nicht
-und meldet `Ungültiger Verteilungsname: 'Ubuntu-24.04'`. Darum zuerst WSL
-aktualisieren, in einer PowerShell mit Administratorrechten:
+neuen Paketformat an, und das liest WSL erst ab Version 2.4.4. Ältere
+WSL-Versionen kennen den Namen `Ubuntu-24.04` deshalb nicht und melden
+`Ungültiger Verteilungsname: 'Ubuntu-24.04'`. Das betrifft unter Windows 10
+immer die eingebaute Version, unter Windows 11 ein WSL, das lange nicht
+aktualisiert wurde. Darum zuerst WSL aktualisieren, in einer PowerShell mit
+Administratorrechten:
 
 ```powershell
 wsl --update                       # aktuelle WSL-Version aus dem Microsoft Store, mit WSLg
@@ -192,12 +175,37 @@ python3 -m tkinter                 # ein kleines Testfenster erscheint unter Win
   PowerShell `wsl --update` und `wsl --shutdown` ausführen und Ubuntu neu
   öffnen. Ein eigener X-Server unter Windows (z. B. VcXsrv) wäre ein Ausweg,
   ist aber nicht getestet und hier nicht beschrieben.
-- RViz2 läuft wie unter Windows 11 mit Software-Rendering
-  (`software_gl:=true`, Standard). Ein eigener Grafiktreiber für WSL ist dafür
-  nicht nötig.
+- RViz2 braucht unter WSL Software-Rendering. Das Launch-Skript setzt es selbst
+  (`software_gl:=true`, Standard); ein eigener Grafiktreiber für WSL ist nicht
+  nötig.
 - Im Windows-Explorer sind die Linux-Dateien unter
   `\\wsl$\Ubuntu-24.04\home\<benutzer>\Display` erreichbar; dieser Pfad gilt
-  unter Windows 10 und 11.
+  unter Windows 10 und 11. Neuere Versionen zeigen dieselben Dateien auch
+  unter `\\wsl.localhost\Ubuntu-24.04\…`.
+
+### 2.2 Ergänzungen für Windows 10
+
+Die Schritte aus Abschnitt 2.1 gelten unverändert; dazu kommt Folgendes.
+
+::: hinweis
+**Unter Windows 10 nicht getestet.** Die Schritte folgen den Vorgaben von
+Microsoft für WSL2 und WSLg. Windows 10 bekommt seit dem 14. Oktober 2025
+Sicherheitsupdates nur noch über das ESU-Programm; für einen neu eingerichteten
+Rechner ist Windows 11 die bessere Wahl.
+:::
+
+- **Mindestens 22H2 mit allen Updates.** Ohne WSLg zeigt Windows die Fenster
+  der Oberfläche und von RViz2 nicht an. WSLg gibt es unter Windows 10 nur mit
+  der WSL-Version aus dem Microsoft Store (Schritt 3), und Microsoft verlangt
+  dafür mindestens Build 19044 mit dem Update KB5020030 (November 2022). 22H2
+  ist die letzte Version von Windows 10 und erfüllt das mit allen Updates
+  sicher.
+- **Älteren Build zuerst aktualisieren:** Einstellungen → Update und
+  Sicherheit → Windows Update, bis `winver` Version 22H2, Build 19045.2311
+  oder höher zeigt.
+- **Schritte 2 und 3 nicht überspringen.** Die in Windows 10 eingebaute
+  WSL-Version ist für Ubuntu 24.04 immer zu alt, und `wsl --install` bricht
+  damit womöglich ab, bevor es die Features einschaltet.
 
 ### 2.3 ROS 2 Jazzy und MoveIt 2
 
@@ -286,8 +294,8 @@ Version.
 (Abschnitt 5.3) wirkt nur mit einem gepatchten Pilz-Planner; sonst rechnet Pilz
 fest mit 0,1 s. Dafür wird nur das Pilz-Paket aus dem Quellcode gebaut, in
 einem eigenen Workspace über den apt-Paketen. Das Skript
-`patch_pilz_sampling_time_1.py` liegt im Projektordner; diesen vorher nach
-`~/Display` kopieren (Abschnitt 2.5).
+`patch_pilz_sampling_time_1.py` liegt im Projektordner; das Projekt vorher
+nach `~/Display` herunterladen (Abschnitt 2.5).
 
 ```bash
 mkdir -p ~/ws_moveit/src && cd ~/ws_moveit/src
@@ -313,7 +321,7 @@ Nur für das Verfahren Intrinsic. Der `intrinsic_toppra_wrapper` ist ein
 kleines eigenes Programm, das Bahnkurven und TOPP-RA aus Intrinsic Core
 aufruft. Er liegt fertig gebaut im Projekt unter
 `intrinsic_toppra_wrapper/bin/`; Intrinsic Core und Bazel sind dafür **nicht**
-nötig. Den Projektordner vorher nach `~/Display` kopieren (Abschnitt 2.5).
+nötig. Das Projekt vorher nach `~/Display` herunterladen (Abschnitt 2.5).
 
 ```bash
 W=~/Display/intrinsic_toppra_wrapper/bin/intrinsic_toppra_wrapper
@@ -358,16 +366,49 @@ es Intrinsic Core, Bazel und rund 19 GB Platz; die Schritte stehen in
 **Anhang B** am Ende dieses Teils.
 :::
 
-### 2.5 Projekt einrichten
+### 2.5 Projekt herunterladen
 
-Den Projektordner, ein Git-Repository ohne eingerichtetes Remote, nach
-`~/Display` kopieren. Der Ort ist frei wählbar: Modell, Sicherungen und Bahnen
-liegen standardmäßig neben den Skripten, und das Launch-Skript findet alles
-relativ zu sich selbst (Abschnitt 12).
+Das Projekt liegt öffentlich auf GitHub unter
+<https://github.com/fkwohlfeil/Display>. Am besten wird es direkt in Ubuntu
+nach `~/Display` geklont. So bleibt es ein Git-Repository und lässt sich
+später mit `git pull` aktualisieren. Der Ort ist frei wählbar: Modell,
+Sicherungen und Bahnen liegen standardmäßig neben den Skripten, und das
+Launch-Skript findet alles relativ zu sich selbst (Abschnitt 12).
 
 ```bash
+sudo apt install -y git
+cd ~
+git clone https://github.com/fkwohlfeil/Display.git     # legt ~/Display an
 cd ~/Display
-git status        # vollständig und ohne fremde Änderungen?
+git status        # "nothing to commit, working tree clean"
+ls -l intrinsic_toppra_wrapper/bin/       # Wrapper mit "x": -rwxr-xr-x
+```
+
+Später aktualisieren: `cd ~/Display && git pull`.
+
+**Ohne Git (Archiv).** Wer nur die Dateien braucht, lädt das Archiv des
+Zweigs `main`. Das ist dann kein Git-Repository; `git status` und `git pull`
+gehen darin nicht.
+
+```bash
+cd ~
+curl -L https://github.com/fkwohlfeil/Display/archive/refs/heads/main.tar.gz | tar xz
+mv Display-main Display
+```
+
+- Im Browser geht es auch über **Code → Download ZIP**. Der entpackte Ordner
+  heißt `Display-main` und muss in `Display` umbenannt werden, sonst passen
+  die Befehle mit `~/Display` nicht.
+- Nicht unter Windows klonen oder entpacken und dann nach WSL kopieren: Dabei
+  entstehen `*Zone.Identifier`-Dateien, und der Wrapper verliert sein
+  Ausführrecht (dann `chmod +x`, Abschnitt 2.4).
+
+**Nur einen Ordner**, z. B. die Übergabebahnen; dazu kommen die Dateien der
+obersten Ebene:
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/fkwohlfeil/Display.git
+cd Display && git sparse-checkout set Übergabe/Bahnen
 ```
 
 ### 2.6 Installation prüfen
@@ -437,6 +478,7 @@ Display/
 ├── docs/                            diese Dokumentation (Markdown, Bilder, PDF)
 ├── TCP_Fahrten/                     Bahnen als CSV (bahn_*, plan_*)
 ├── URDF_Speicher/                   Sicherungen der URDF
+├── Übergabe/Bahnen/                 Punktliste und geplante Intrinsic-Bahnen zur Übergabe
 └── archiv/                          frühere Fassungen, nur zum Nachlesen
 ```
 
@@ -1062,6 +1104,7 @@ Den Aufbau des Projektordners zeigt Abschnitt 2.7.
 | `URDF_Speicher/` | automatische Sicherungen überschriebener URDF-Stände |
 | `TCP_Fahrten/bahn_*.csv` | aufgezeichnete Fahrten |
 | `TCP_Fahrten/plan_*.csv` | geplante Bahnen aus dem Folgenfenster |
+| `Übergabe/Bahnen/` | Punktliste (`bahn_punktliste.txt`) und ausgewählte Intrinsic-Bahnen (`plan_intrinsic_*.csv`) zur Übergabe |
 | `/tmp/urdf_gui_moveit_*/move_group.log` | Ausgabe von `move_group` (für die Fehlersuche) |
 | `/tmp/urdf_gui_totg_*/totg.log` | Ausgabe des letzten TOTG-/Intrinsic-Rechners |
 | `archiv/` | frühere Programmfassungen; für den Betrieb nicht nötig |

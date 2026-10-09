@@ -33,6 +33,29 @@ sich über Umgebungsvariablen (siehe unten), ohne
 [einstellungen.py](einstellungen.py) zu ändern. Alle weiteren Stellschrauben
 stehen unter [Einstellbare Werte](#einstellbare-werte).
 
+## Herunterladen
+
+Direkt in Ubuntu/WSL klonen, nicht unter Windows (sonst entstehen
+`Zone.Identifier`-Dateien und der Wrapper verliert sein Ausführrecht):
+
+```bash
+cd ~
+git clone https://github.com/fkwohlfeil/Display.git     # legt ~/Display an
+cd ~/Display && git pull                                 # später aktualisieren
+```
+
+Ohne Git geht es über das Archiv (dann kein `git pull`). Der Ordner heißt
+darin `Display-main` und wird umbenannt:
+
+```bash
+cd ~
+curl -L https://github.com/fkwohlfeil/Display/archive/refs/heads/main.tar.gz | tar xz
+mv Display-main Display
+```
+
+Weitere Wege (ZIP im Browser, nur ein Ordner) stehen in
+`docs/Bedienerdokumentation.md`, Abschnitt 2.5.
+
 ## Starten
 
 ```bash
@@ -490,6 +513,7 @@ Einzelheiten stehen im Kopfkommentar von `intrinsic_lin_rechner.py`.
 | `intrinsic_toppra_wrapper/` | Wrapper: fertiges Programm in `bin/`, Quellen (`BUILD`, `.cc`, `json_klein.h`) und ein Beispielauftrag; gebaut wird nur bei Änderungen, im Baum von Intrinsic Core |
 | `patch_pilz_sampling_time_1.py` | Patch für Pilz 2.12.4: Abtastzeit als ROS-Parameter (`--pruefen`, `--zurueck`) |
 | `URDF_Speicher/` | automatische Sicherungen bearbeiteter URDF-Stände |
+| `Übergabe/Bahnen/` | Punktliste (`bahn_punktliste.txt`) und ausgewählte Intrinsic-Bahnen (`plan_intrinsic_*.csv`) zur Übergabe |
 | `archiv/lin_arbeitsdateien/` | frühere Arbeitsdateien des LIN-Rechners (neue im Projektordner ignoriert `.gitignore`) |
 
 Die CSV-Dateien beginnen mit Metadatenzeilen im Format `#schluessel;wert`,

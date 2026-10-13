@@ -1,5 +1,7 @@
 # URDF-GUI für Bahnplanung
 
+Projekt auf GitHub: <https://github.com/fkwohlfeil/Display>
+
 Tkinter-Oberfläche für ROS 2 (Jazzy) und MoveIt: URDF laden und bearbeiten,
 Achsen vorgeben, Vorwärtskinematik rechnen, TF senden, Punktfolgen planen,
 abfahren und als CSV aufzeichnen.

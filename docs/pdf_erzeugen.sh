@@ -38,6 +38,8 @@ awk 'FNR==1{im_code=0} /^ *```/{im_code=!im_code; next}
      im_code && length($0)>95 {printf "WARNUNG %s:%d: Codezeile mit %d Zeichen wird umbrochen\n", FILENAME, FNR, length($0)}' \
   Begriffe.md Entwicklerdokumentation.md Bedienerdokumentation.md >&2
 
+# Der GitHub-Link auf der Titelseite steht im Feld author. --variable statt
+# --metadata, weil pandoc Metadaten als Text maskiert und kein <a> durchliesse.
 pandoc Begriffe.md Entwicklerdokumentation.md Bedienerdokumentation.md \
   --from markdown --to html5 --standalone --embed-resources \
   --toc --toc-depth=2 --css pdf_stil.css --columns=10000 \
@@ -45,6 +47,7 @@ pandoc Begriffe.md Entwicklerdokumentation.md Bedienerdokumentation.md \
   --metadata title="URDF-GUI für Bahnplanung" \
   --metadata subtitle="Entwickler- und Bedienerdokumentation" \
   --metadata date="Stand: urdf_gui.py 2.3 · Oktober 2026" \
+  --variable author='Projekt auf GitHub: <a href="https://github.com/fkwohlfeil/Display">github.com/fkwohlfeil/Display</a>' \
   --metadata toc-title="Inhalt" \
   --metadata lang=de \
   -o "$HTML"
